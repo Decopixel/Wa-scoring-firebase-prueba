@@ -109,3 +109,9 @@ button.score-editable.score-edit-selected{outline:3px solid var(--green);outline
 .elim-spectator-match{display:grid;gap:5px;background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:9px;font-size:11px}
 .elim-spectator-match strong{color:var(--green)}
 @media(max-width:360px){.elim-score-row,.elim-score-head{grid-template-columns:64px minmax(0,1fr) minmax(0,1fr)}}
+
+/* 0.6.1 · anotación por flecha desde teléfonos remotos */
+.elim-arrow-buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.elim-arrow-buttons .btn{min-width:0;padding:10px 2px;font-weight:700;font-size:14px}
+.elim-arrow-chip{display:inline-flex;min-width:40px;justify-content:center;padding:9px 13px;border:1px solid var(--line,#bcc7d4);border-radius:10px;font-weight:700}
+@media(max-width:360px){.elim-arrow-buttons{grid-template-columns:repeat(4,minmax(0,1fr))}}

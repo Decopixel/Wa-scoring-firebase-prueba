@@ -1,8 +1,8 @@
-/* WA Scoring 0.6.0 — piloto Firebase, sin alterar IndexedDB */
-const CACHE = 'wa-scoring-shell-v13';
+/* WA Scoring 0.6.1 — piloto Firebase, sin alterar IndexedDB */
+const CACHE = 'wa-scoring-shell-v14';
 const FILES = [
-  './', './index.html', './app.css?v=0.6.0', './app.js?v=0.6.0',
-  './cloud.js?v=0.6.0', './eliminations.js?v=0.6.0', './qr.js?v=0.6.0', './firebase-config.js?v=0.6.0',
+  './', './index.html', './app.css?v=0.6.1', './app.js?v=0.6.1',
+  './cloud.js?v=0.6.1', './eliminations.js?v=0.6.1', './qr.js?v=0.6.1', './firebase-config.js?v=0.6.1',
   './manifest.webmanifest', './icon-192.png', './icon-512.png'
 ];
 self.addEventListener('install', event => {

@@ -1,4 +1,4 @@
-/** WA Scoring — Firebase pilot 0.5.3. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
+/** WA Scoring — Firebase pilot 0.6.1. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
@@ -83,7 +83,7 @@ export function watchAdmission(roomId,accept,reject){
   if(snap.exists())accept(snap.data());
  },reject);
 }
-export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onMembers,onBrackets,onError}){
+export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onMembers,onBrackets,onTasks,onError}){
  assertReady();const stops=[];const ref=doc(db,root,roomId);
  stops.push(onSnapshot(ref,s=>{if(!s.exists())return onError(Error('La sala ya no existe'));onRoom(s.data());},onError));
  const cards=collection(ref,'cards');
@@ -91,6 +91,10 @@ export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onM
   const rows=[];snap.forEach(x=>rows.push([x.id,fromFirestoreCard(x.data())]));onCards(rows,snap.metadata.fromCache);
  },onError));
  if(organizer)stops.push(onSnapshot(collection(ref,'eliminations'),snap=>{const groups={};snap.forEach(x=>groups[x.id]=x.data());onBrackets(groups);},onError));
+ const jobs=collection(ref,'elimTasks');
+ stops.push(onSnapshot(organizer?jobs:query(jobs,where('assigneeUid','==',currentUid())),snap=>{
+  onTasks(snap.docs.map(d=>({id:d.id,...d.data()})),snap.metadata.fromCache);
+ },onError));
  if(organizer)stops.push(onSnapshot(collection(ref,'members'),snap=>{
    const members=[];snap.forEach(x=>members.push({uid:x.id,...x.data()}));onMembers(members);
   },onError));
@@ -155,6 +159,161 @@ export async function saveElimination(roomId,key,group,expectedRevision){
   return data;
  });
 }
+
+// 0.6.1: Los encuentros de eliminación son tareas independientes de las planillas
+// de clasificación. Los permisos se comprueban en las reglas y en transacciones.
+function taskKey(groupKey,matchId){
+ if(!/^g_[A-Za-z0-9_.~-]+$/.test(groupKey)||! /^(R[1-5]M\d{1,2}|BRONZE)$/.test(matchId))throw Error('Identificador de encuentro inválido.');
+ return `${groupKey}~${matchId}`;
+}
+function arrowSubtotal(values){
+ if(!Array.isArray(values)||values.length!==3)throw Error('Anota exactamente tres flechas por arquero.');
+ return values.reduce((sum,raw)=>{
+  const v=String(raw).toUpperCase().trim();
+  if(!/^(X|M|10|[0-9])$/.test(v))throw Error('Flecha inválida: escribe X, M o un valor de 0 a 10.');
+  return sum+(v==='X'?10:v==='M'?0:Number(v));
+ },0);
+}
+function nextSetResult(task,ends,shootOff=null){
+ if(!window.WA_ELIM?.result)throw Error('El motor de eliminatorias no está disponible.');
+ return window.WA_ELIM.result({a:task.a,b:task.b,ends,shootOff},task.mode);
+}
+function taskRecord(task,ends){return {...task,ends,shootOff:null};}
+export async function assignEliminationTask(roomId,groupKey,matchId,target,scorerUid){
+ assertReady();if(!Number.isInteger(target)||target<1||target>500||!scorerUid)throw Error('Selecciona parapeto y teléfono autorizado.');
+ const id=taskKey(groupKey,matchId),roomRef=doc(db,root,roomId),ref=doc(roomRef,'elimTasks',id);
+ return runTransaction(db,async tx=>{
+  const rs=await tx.get(roomRef),gs=await tx.get(doc(roomRef,'eliminations',groupKey)),ms=await tx.get(doc(roomRef,'members',scorerUid)),before=await tx.get(ref);
+  if(!rs.exists()||rs.data().ownerUid!==currentUid()||rs.data().status!=='running')throw Error('Solo el organizador puede asignar teléfonos con el torneo iniciado.');
+  if(!ms.exists()||ms.data().role!=='scorer')throw Error('Teléfono no autorizado: primero apruébalo en la sala.');
+  if(!gs.exists())throw Error('No existe esta llave.');
+  const group=gs.data(),match=matchId==='BRONZE'?group.bronze:group.matches.find(x=>x.id===matchId);
+  if(!match?.a||!match?.b||match.winner)throw Error('Solo puedes asignar encuentros con dos arqueros y sin ganador.');
+  const old=before.exists()?before.data():null;
+  if(old&&(old.status!=='active'||old.groupKey!==groupKey||old.matchId!==matchId||old.a!==match.a||old.b!==match.b))throw Error('El encuentro cambió o ya fue validado. Actualiza la llave.');
+  const now=new Date().toISOString();
+  const data=old?{...old,target,assigneeUid:scorerUid,revision:old.revision+1,updatedAt:now,lastWriterUid:currentUid()}:
+   {groupKey,matchId,category:group.category,mode:group.mode,a:match.a,b:match.b,target,assigneeUid:scorerUid,status:'active',ends:[],current:{aShots:[],bShots:[]},shootOff:null,revision:0,createdAt:now,updatedAt:now,lastWriterUid:currentUid()};
+  tx.set(ref,data);return {id,...data};
+ });
+}
+
+// Reasignación de emergencia de TODOS los encuentros activos de un teléfono.
+// Es una transacción indivisible: si alguno cambió, se cancela toda la operación.
+export async function transferEliminationTasks(roomId,sourceUid,destinationUid,items){
+ assertReady();if(!sourceUid||!destinationUid||sourceUid===destinationUid||!Array.isArray(items)||!items.length||items.length>40)
+  throw Error('Selecciona teléfonos distintos y al menos un encuentro activo.');
+ if(items.some(item=>!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(item.id)||!Number.isInteger(item.revision)))
+  throw Error('Identificador de tarea incorrecto.');
+ const ids=items.map(item=>item.id);if(new Set(ids).size!==ids.length)throw Error('Se repite un encuentro.');
+ const roomRef=doc(db,root,roomId);
+ return runTransaction(db,async tx=>{
+  const room=await tx.get(roomRef),destination=await tx.get(doc(roomRef,'members',destinationUid));
+  if(!room.exists()||room.data().ownerUid!==currentUid()||room.data().status!=='running')throw Error('Solo el organizador puede transferir teléfonos.');
+  if(!destination.exists()||destination.data().role!=='scorer')throw Error('El nuevo teléfono no está autorizado.');
+  const records=[];
+  for(const item of items){const ref=doc(roomRef,'elimTasks',item.id),snap=await tx.get(ref);
+   if(!snap.exists()||snap.data().assigneeUid!==sourceUid||snap.data().status!=='active'||snap.data().revision!==item.revision)
+    throw Error('Una asignación cambió mientras transferías. Actualiza el panel y repite; no se movió ninguna.');
+   records.push({ref,data:snap.data()});
+  }
+  const now=new Date().toISOString();
+  for(const {ref,data} of records)tx.update(ref,{assigneeUid:destinationUid,revision:data.revision+1,lastWriterUid:currentUid(),updatedAt:now});
+  return records.length;
+ });
+}
+export async function writeEliminationSet(roomId,id,expectedRevision,shotsA,shotsB,undo=false){
+ assertReady();if(!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(id))throw Error('Encuentro inválido.');
+ const ref=doc(db,root,roomId,'elimTasks',id);
+ return runTransaction(db,async tx=>{
+  const snap=await tx.get(ref);if(!snap.exists())throw Error('El encuentro no está asignado.');
+  const task=snap.data();
+  if(task.assigneeUid!==currentUid()||task.status!=='active')throw Error('Este encuentro ya no está asignado a tu teléfono. No anotes más flechas.');
+  if(task.revision!==expectedRevision)throw Error('CONFLICTO: cambió el encuentro o su asignación. Revisa la pantalla antes de continuar.');
+  const old=task.ends||[];
+  if((task.current?.aShots||[]).length||(task.current?.bShots||[]).length)throw Error('Termina o corrige la tanda actual antes de usar la carga por set.');
+  if(!undo&&nextSetResult(task,old).final)throw Error('El enfrentamiento está decidido. Espera la validación del organizador.');
+  let ends;if(undo){if(!old.length)throw Error('No hay ninguna tanda para retirar.');ends=old.slice(0,-1)}
+  else{
+   if(old.length>=5)throw Error('Ya se registraron cinco tandas.');
+   const aShots=shotsA.map(v=>String(v).trim().toUpperCase()),bShots=shotsB.map(v=>String(v).trim().toUpperCase());
+   ends=[...old,{aShots,bShots,a:arrowSubtotal(aShots),b:arrowSubtotal(bShots)}];
+   nextSetResult(task,ends); // prohibición de tandas después de 6 puntos de set
+  }
+  const updated={...task,ends,revision:task.revision+1,lastWriterUid:currentUid(),updatedAt:new Date().toISOString()};
+  tx.update(ref,{ends:updated.ends,revision:updated.revision,lastWriterUid:updated.lastWriterUid,updatedAt:updated.updatedAt});
+  return {id,...updated};
+ });
+}
+
+// Anotación por flecha: una transacción por impacto registrado. Una tanda
+// se cierra sola tras recibir tres flechas de cada arquero.
+export async function writeEliminationArrow(roomId,id,expectedRevision,side,raw){
+ assertReady();if(!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(id)||!['a','b'].includes(side))throw Error('Encuentro o arquero incorrecto.');
+ const value=String(raw).trim().toUpperCase();if(!/^(X|M|10|[0-9])$/.test(value))throw Error('Valor inválido: elige X, 10–0 o M.');
+ return runTransaction(db,async tx=>{
+  const ref=doc(db,root,roomId,'elimTasks',id),snap=await tx.get(ref);
+  if(!snap.exists())throw Error('Encuentro no disponible.');const task=snap.data();
+  if(task.status!=='active'||task.assigneeUid!==currentUid())throw Error('El organizador ya transfirió o cerró este encuentro.');
+  if(task.revision!==expectedRevision)throw Error('CONFLICTO: el marcador cambió. Revisa las flechas antes de repetir.');
+  if(nextSetResult(task,task.ends||[]).final||task.ends.length>=5)throw Error('No se admiten flechas: el encuentro terminó o necesita desempate.');
+  const current=structuredClone(task.current||{aShots:[],bShots:[]}),key=side==='a'?'aShots':'bShots';
+  if(current[key].length>=3)throw Error('Ese arquero ya tiene tres flechas en esta tanda.');
+  current[key].push(value);
+  let ends=[...(task.ends||[])];
+  if(current.aShots.length===3&&current.bShots.length===3){
+   ends.push({aShots:current.aShots,bShots:current.bShots,a:arrowSubtotal(current.aShots),b:arrowSubtotal(current.bShots)});
+   nextSetResult(task,ends);current.aShots=[];current.bShots=[];
+  }
+  const updated={...task,current,ends,revision:task.revision+1,lastWriterUid:currentUid(),updatedAt:new Date().toISOString()};
+  tx.update(ref,{current,ends,revision:updated.revision,lastWriterUid:updated.lastWriterUid,updatedAt:updated.updatedAt});
+  return {id,...updated};
+ });
+}
+export async function undoEliminationArrow(roomId,id,expectedRevision,side){
+ assertReady();if(!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(id)||!['a','b'].includes(side))throw Error('Encuentro incorrecto.');
+ return runTransaction(db,async tx=>{
+  const ref=doc(db,root,roomId,'elimTasks',id),snap=await tx.get(ref);
+  if(!snap.exists())throw Error('Encuentro no encontrado.');const task=snap.data();
+  if(task.status!=='active'||task.assigneeUid!==currentUid())throw Error('Ya no tienes permiso de anotación.');
+  if(task.revision!==expectedRevision)throw Error('CONFLICTO: hubo otra anotación. Actualiza antes de corregir.');
+  const current=structuredClone(task.current||{aShots:[],bShots:[]}),ends=[...(task.ends||[])],key=side==='a'?'aShots':'bShots';
+  if(!current[key].length){
+   if(current.aShots.length||current.bShots.length||!ends.length)throw Error('No hay flechas de este arquero para deshacer en la tanda actual.');
+   const last=ends.pop();current.aShots=[...last.aShots];current.bShots=[...last.bShots];
+  }
+  if(!current[key].length)throw Error('No hay flecha que corregir.');
+  current[key].pop();
+  const updated={...task,current,ends,revision:task.revision+1,lastWriterUid:currentUid(),updatedAt:new Date().toISOString()};
+  tx.update(ref,{current,ends,revision:updated.revision,lastWriterUid:updated.lastWriterUid,updatedAt:updated.updatedAt});
+  return {id,...updated};
+ });
+}
+// Una sola transacción valida el marcador, actualiza la llave, cierra el cupo
+// y publica la llave si el organizador habilitó espectadores previamente.
+export async function closeEliminationTask(roomId,id,expectedTaskRevision,expectedGroupRevision,shootOff=null){
+ assertReady();const cut=id.lastIndexOf('~');if(cut<0)throw Error('Identificador de encuentro inválido.');
+ const groupKey=id.slice(0,cut),matchId=id.slice(cut+1);taskKey(groupKey,matchId);
+ const roomRef=doc(db,root,roomId),taskRef=doc(roomRef,'elimTasks',id),groupRef=doc(roomRef,'eliminations',groupKey),publicRef=doc(db,publicRoot,roomId),publicGroup=doc(publicRef,'eliminations',groupKey);
+ return runTransaction(db,async tx=>{
+  const roomSnap=await tx.get(roomRef),t=await tx.get(taskRef),g=await tx.get(groupRef),published=await tx.get(publicRef);
+  if(!roomSnap.exists()||roomSnap.data().ownerUid!==currentUid()||roomSnap.data().status!=='running')throw Error('Solo el organizador valida los encuentros.');
+  if(!t.exists()||!g.exists())throw Error('El encuentro o la llave no están disponibles.');
+  const task=t.data(),group=g.data();
+  if(task.status!=='active'||task.revision!==expectedTaskRevision||group.revision!==expectedGroupRevision)throw Error('CONFLICTO: el encuentro cambió. Revisa el resultado nuevamente.');
+  if((task.current?.aShots||[]).length||(task.current?.bShots||[]).length)throw Error('Hay flechas sin cerrar. Comprueba y completa la tanda antes de validar.');
+  const ends=task.ends.map(v=>({a:v.a,b:v.b}));
+  const outcome=nextSetResult(task,ends,shootOff);
+  if(!outcome.final)throw Error('No hay ganador: faltan sets o desempate oficial.');
+  const next=window.WA_ELIM.setMatch(group,matchId,ends,shootOff);
+  const now=new Date().toISOString(),data={...next,revision:group.revision+1,createdAt:group.createdAt,updatedAt:now};
+  tx.set(groupRef,data);
+  tx.update(taskRef,{status:'closed',shootOff:shootOff||null,revision:task.revision+1,lastWriterUid:currentUid(),updatedAt:now});
+  if(published.exists())tx.set(publicGroup,data);
+  return data;
+ });
+}
+
 // Público: nombre/categoría y resumen para clasificación. Las coordenadas se liberan SOLO tras validación.
 function tally(shots){return shots.reduce((n,s)=>n+(s.score==='M'?0:Number(s.score)||0),0);}
 function publicScore(card){

@@ -1,4 +1,4 @@
-/* WA Scoring 0.6.0 PILOTO — motor de cuadros individuales, sin dependencias externas. */
+/* WA Scoring 0.6.1 PILOTO — motor de cuadros individuales, sin dependencias externas. */
 (()=>{'use strict';
 const sizes=[8,16,32];
 function seedPositions(size){if(!sizes.includes(size))throw Error('Llave no admitida');let order=[1,4,3,2];while(order.length<size){const next=order.length*2;order=order.flatMap(seed=>[seed,next+1-seed]);}return order;}
