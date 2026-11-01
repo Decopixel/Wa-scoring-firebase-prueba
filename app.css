@@ -75,3 +75,12 @@ textarea:focus-visible,.signature-canvas:focus-visible{outline:3px solid var(--g
 .room-code{display:block;background:var(--card);border-radius:10px;padding:11px;overflow-wrap:anywhere;font-size:15px;letter-spacing:.05em;color:var(--ink)}
 .qr-box{display:grid;place-items:center;margin:auto;background:#fff;border:1px solid #dae3dc;border-radius:12px;padding:12px;max-width:280px}
 .wa-qr{max-width:235px;width:100%;height:auto;display:block;aspect-ratio:1}
+
+/* v0.5.3 · Corrección directa de flechas seleccionadas, sin alterar colores WA */
+button.score-editable{cursor:pointer;font:inherit;line-height:1.1;border-width:2px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1px}
+button.score-editable small{font-size:9px;font-weight:700;opacity:.8}
+button.score-editable:focus-visible{outline:3px solid var(--green);outline-offset:2px}
+button.score-editable.score-edit-selected{outline:3px solid var(--green);outline-offset:1px;box-shadow:0 0 0 2px var(--card) inset}
+.shot-edit-banner{display:grid;gap:7px;border:2px solid var(--green);background:var(--soft);padding:12px;border-radius:12px;font-size:13px}
+.shot-edit-banner span{color:var(--muted)}
+.shot-edit-banner button{justify-self:start}

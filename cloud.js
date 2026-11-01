@@ -1,7 +1,7 @@
-/** WA Scoring — Firebase pilot 0.5.0. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
+/** WA Scoring — Firebase pilot 0.5.3. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 const config=window.WA_FIREBASE_CONFIG||{};
 export const isConfigured=Boolean(config.apiKey&&config.projectId&&config.appId&&config.authDomain);
 let app,auth,db;
@@ -51,7 +51,7 @@ export async function initialize(){
  return currentUid();
 }
 export async function publish(ev){
- assertReady();if(ev.status!=='running'||!ev.locked||!ev.draw?.length)throw Error('Inicia y confirma el sorteo antes de publicar.');
+ assertReady();if(ev.status!=='setup'||ev.annotationMode!=='cloud'||!ev.locked||!ev.draw?.length)throw Error('Confirma el sorteo y elige Firebase antes de publicar.');
  if(ev.draw.length>180)throw Error('Piloto limitado a 180 arqueros por competencia; se ampliará tras las pruebas.');
  const ref=doc(collection(db,root));const roomId=ref.id;
  const metadata={ownerUid:currentUid(),sourceEventId:ev.id,name:ev.name,date:ev.date,formatId:ev.formatId,entries:ev.entries,draw:ev.draw,scorers:ev.scorers||[],targets:[...new Set(ev.draw.map(x=>x.target))],preferLeft:!!ev.preferLeft,locked:true,status:'publishing',schemaVersion:1,createdAt:new Date().toISOString()};
@@ -67,7 +67,7 @@ export async function publish(ev){
  }
  if(n)chunks.push(batch);
  for(const b of chunks)await b.commit();
- await updateDoc(ref,{status:'running'});
+ await updateDoc(ref,{status:'waiting'});
  return roomId;
 }
 export async function requestJoin(roomId,target,name){
@@ -82,13 +82,16 @@ export function watchAdmission(roomId,accept,reject){
   if(snap.exists())accept(snap.data());
  },reject);
 }
-export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onError}){
+export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onMembers,onError}){
  assertReady();const stops=[];const ref=doc(db,root,roomId);
  stops.push(onSnapshot(ref,s=>{if(!s.exists())return onError(Error('La sala ya no existe'));onRoom(s.data());},onError));
  const cards=collection(ref,'cards');
  stops.push(onSnapshot(organizer?cards:query(cards,where('target','==',target)),snap=>{
   const rows=[];snap.forEach(x=>rows.push([x.id,fromFirestoreCard(x.data())]));onCards(rows,snap.metadata.fromCache);
  },onError));
+ if(organizer)stops.push(onSnapshot(collection(ref,'members'),snap=>{
+   const members=[];snap.forEach(x=>members.push({uid:x.id,...x.data()}));onMembers(members);
+  },onError));
  if(organizer)stops.push(onSnapshot(collection(ref,'requests'),snap=>{
   const requests=[];snap.forEach(x=>requests.push({uid:x.id,...x.data()}));onRequests(requests);
  },onError));
@@ -100,8 +103,20 @@ export async function approve(roomId,uid,target){
  if(!reqSnap.exists()||reqSnap.data().target!==target)throw Error('La solicitud cambió; actualiza la pantalla.');
  const roomSnap=await getDoc(doc(db,root,roomId));
  if(roomSnap.data()?.ownerUid!==currentUid()||!roomSnap.data().targets.includes(target))throw Error('Sin autorización para asignar este parapeto');
- await setDoc(doc(db,root,roomId,'members',uid),{uid,role:'scorer',target,approvedAt:new Date().toISOString()});
+ await setDoc(doc(db,root,roomId,'members',uid),{uid,role:'scorer',target,name:reqSnap.data().name,approvedAt:new Date().toISOString()});
  await deleteDoc(doc(db,root,roomId,'requests',uid));
+}
+export async function startRoom(roomId,requiredTargets){
+ assertReady();const ref=doc(db,root,roomId);
+ const snapshot=await getDocs(collection(ref,'members'));
+ const approved=new Set(snapshot.docs.filter(x=>x.data().role==='scorer').map(x=>Number(x.data().target)));
+ if(!Array.isArray(requiredTargets)||!requiredTargets.length||!requiredTargets.every(t=>approved.has(t)))
+  throw Error('Hay parapetos sin anotador aprobado. No se inició la competencia.');
+ await runTransaction(db,async tx=>{
+  const snap=await tx.get(ref);
+  if(!snap.exists()||snap.data().ownerUid!==currentUid()||snap.data().status!=='waiting')throw Error('La sala no está esperando el inicio o no eres el organizador.');
+  tx.update(ref,{status:'running'});
+ });
 }
 export async function updateCard(roomId,number,expectedRevision,nextResult){
  assertReady();const ref=doc(db,root,roomId,'cards',String(number));
