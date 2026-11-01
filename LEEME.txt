@@ -1,0 +1,33 @@
+WA SCORING — PARCHE FIREBASE 0.5.2 (PILOTO)
+==========================================
+CORRECCIÓN: «Function Transaction.update() called with invalid data. Nested arrays are not supported» al anotar la tercera flecha de una tanda.
+
+QUÉ CAMBIÓ
+- cloud.js convierte las tandas antes de enviarlas a Firestore: en lugar de arrays dentro de arrays, utiliza una lista de mapas {shots: [...]}.
+- Al recibir puntuaciones, las convierte a la representación original que usa WA Scoring, conservando la interfaz y los cálculos.
+- Hace lo mismo con las tandas de revisiones anteriores de planillas firmadas.
+- app.js incluye también las protecciones de anotación de la versión 0.5.1: evita cierres incoherentes y mantiene bloqueadas las planillas firmadas.
+- Versión visible 0.5.2; actualiza caché de la PWA.
+
+ACTUALIZACIÓN EN GITHUB PAGES (REPOSITORIO DE PRUEBA)
+1. NO toques el repositorio estable de WA Scoring 0.4.1.
+2. Abre: https://github.com/Decopixel/Wa-scoring-firebase-prueba
+3. En Add file > Upload files, sube los CUATRO archivos que están junto a este LEEME:
+   index.html, app.js, cloud.js, sw.js.
+4. Presiona Commit changes y espera a que termine la publicación de GitHub Pages.
+5. Abre https://decopixel.github.io/Wa-scoring-firebase-prueba/ en AMBOS equipos, y comprueba «v0.5.2 piloto».
+6. En ambos equipos, abre/reconecta la misma sala en red. No publiques una sala nueva ni borres las anteriores.
+7. Comprueba el total en ambos equipos antes de tocar la diana. Si estaba en 2/60, registra solo la tercera flecha UNA vez.
+8. Confirma que la primera tanda termina en 3/60 y la cuarta flecha inicia la segunda tanda, sin error.
+
+NO NECESITAS MODIFICAR LAS REGLAS FIRESTORE NI LA CONFIGURACIÓN DE FIREBASE.
+NO desinstales la aplicación, no borres datos locales ni resetees la competencia.
+
+PRUEBAS REALIZADAS
+- node --check para app.js, cloud.js y sw.js.
+- Simulación del cliente Firestore: publicación con tandas/revisiones, escritura y lectura, cierre de tanda, nueva tanda, conflicto de versión y lectura de planillas anteriores.
+- Verificación de ausencia de arrays directamente dentro de arrays en los documentos simulados.
+- Esta versión NO HA SIDO AÚN PROBADA CONTRA FIREBASE REAL NI EN EL IPHONE DEL USUARIO.
+
+ADVERTENCIA
+Piloto 0.5.2: requiere internet. Si falla la conexión, detén la anotación y recupera la sincronización antes de continuar. No es aún una versión lista para competencias oficiales.

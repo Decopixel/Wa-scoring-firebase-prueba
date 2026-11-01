@@ -6,6 +6,40 @@ const config=window.WA_FIREBASE_CONFIG||{};
 export const isConfigured=Boolean(config.apiKey&&config.projectId&&config.appId&&config.authDomain);
 let app,auth,db;
 const root='waRooms';
+// Firestore no permite arrays anidados directamente (ends = [[flechas], ...]).
+// Guardamos cada tanda como un mapa {shots:[...]}; en la app permanecen arrays normales.
+// El mismo formato se usa dentro de las revisiones históricas firmadas.
+function packEnds(ends){
+ if(!Array.isArray(ends))throw Error('Formato de tandas incorrecto: se esperaba una lista.');
+ return ends.map(end=>{
+  const shots=Array.isArray(end)?end:end?.shots;
+  if(!Array.isArray(shots))throw Error('Formato de tanda incompatible: no se envió ninguna flecha.');
+  return {shots};
+ });
+}
+function unpackEnds(ends){
+ if(!Array.isArray(ends))throw Error('La planilla recibida no contiene una lista de tandas válida.');
+ return ends.map(end=>{
+  const shots=Array.isArray(end)?end:end?.shots;
+  if(!Array.isArray(shots))throw Error('Una tanda recibida de Firebase tiene formato desconocido.');
+  return shots;
+ });
+}
+function packRevisions(revisions){
+ if(!Array.isArray(revisions))throw Error('Historial de revisiones inválido.');
+ return revisions.map(r=>r?.snapshot?{...r,snapshot:{...r.snapshot,ends:packEnds(r.snapshot.ends||[])}}:r);
+}
+function unpackRevisions(revisions){
+ if(!Array.isArray(revisions))throw Error('Historial de revisiones recibido inválido.');
+ return revisions.map(r=>r?.snapshot?{...r,snapshot:{...r.snapshot,ends:unpackEnds(r.snapshot.ends||[])}}:r);
+}
+function toFirestoreCard(card){
+ return {...card,ends:packEnds(card.ends||[]),revisions:packRevisions(card.revisions||[])};
+}
+function fromFirestoreCard(card){
+ return {...card,ends:unpackEnds(card.ends||[]),revisions:unpackRevisions(card.revisions||[])};
+}
+
 function assertReady(){if(!db||!auth?.currentUser)throw Error('Firebase no está conectado. Comprueba internet y configuración.');}
 export function currentUid(){return auth?.currentUser?.uid||null}
 export async function initialize(){
@@ -29,7 +63,7 @@ export async function publish(ev){
   const key=String(slot.number),r=ev.results?.[key]||{ends:[],current:[],status:'active'};
   const card={number:slot.number,target:slot.target,position:slot.position,revision:0,ends:r.ends||[],current:r.current||[],status:r.status||'active',validation:r.validation||{status:'pending',decision:null,archerSignature:null,scorerSignature:null},revisions:r.revisions||[],lastWriterUid:currentUid(),updatedAt:new Date().toISOString()};
   if(JSON.stringify(card).length>850000)throw Error(`La planilla ${slot.number} es demasiado grande para Firestore; no se puede publicar.`);
-  batch.set(doc(ref,'cards',key),card);n++;if(n===350){chunks.push(batch);batch=writeBatch(db);n=0}
+  batch.set(doc(ref,'cards',key),toFirestoreCard(card));n++;if(n===350){chunks.push(batch);batch=writeBatch(db);n=0}
  }
  if(n)chunks.push(batch);
  for(const b of chunks)await b.commit();
@@ -53,7 +87,7 @@ export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onE
  stops.push(onSnapshot(ref,s=>{if(!s.exists())return onError(Error('La sala ya no existe'));onRoom(s.data());},onError));
  const cards=collection(ref,'cards');
  stops.push(onSnapshot(organizer?cards:query(cards,where('target','==',target)),snap=>{
-  const rows=[];snap.forEach(x=>rows.push([x.id,x.data()]));onCards(rows,snap.metadata.fromCache);
+  const rows=[];snap.forEach(x=>rows.push([x.id,fromFirestoreCard(x.data())]));onCards(rows,snap.metadata.fromCache);
  },onError));
  if(organizer)stops.push(onSnapshot(collection(ref,'requests'),snap=>{
   const requests=[];snap.forEach(x=>requests.push({uid:x.id,...x.data()}));onRequests(requests);
@@ -79,7 +113,7 @@ export async function updateCard(roomId,number,expectedRevision,nextResult){
   const previous=snap.data();
   if(previous.revision!==expectedRevision)throw Error('CONFLICTO: la planilla cambió en otro teléfono. Se mostrará la versión más reciente; verifica antes de repetir el toque.');
   const card={...previous,ends:result.ends,current:result.current,status:result.status,validation:result.validation||{status:'pending',decision:null,archerSignature:null,scorerSignature:null},revisions:result.revisions||[],revision:previous.revision+1,lastWriterUid:currentUid(),updatedAt:new Date().toISOString()};
-  tx.update(ref,card);
+  tx.update(ref,toFirestoreCard(card));
   return card;
  });
 }
