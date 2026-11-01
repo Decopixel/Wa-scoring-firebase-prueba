@@ -83,13 +83,14 @@ export function watchAdmission(roomId,accept,reject){
   if(snap.exists())accept(snap.data());
  },reject);
 }
-export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onMembers,onError}){
+export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onMembers,onBrackets,onError}){
  assertReady();const stops=[];const ref=doc(db,root,roomId);
  stops.push(onSnapshot(ref,s=>{if(!s.exists())return onError(Error('La sala ya no existe'));onRoom(s.data());},onError));
  const cards=collection(ref,'cards');
  stops.push(onSnapshot(organizer?cards:query(cards,where('target','==',target)),snap=>{
   const rows=[];snap.forEach(x=>rows.push([x.id,fromFirestoreCard(x.data())]));onCards(rows,snap.metadata.fromCache);
  },onError));
+ if(organizer)stops.push(onSnapshot(collection(ref,'eliminations'),snap=>{const groups={};snap.forEach(x=>groups[x.id]=x.data());onBrackets(groups);},onError));
  if(organizer)stops.push(onSnapshot(collection(ref,'members'),snap=>{
    const members=[];snap.forEach(x=>members.push({uid:x.id,...x.data()}));onMembers(members);
   },onError));
@@ -137,6 +138,23 @@ export async function updateCard(roomId,number,expectedRevision,nextResult){
  });
 }
 
+// Eliminatorias: SOLO el organizador modifica una llave y solo con revisión confirmada.
+// Los enfrentamientos se escriben en una colección independiente; no tocan planillas firmadas.
+export async function saveElimination(roomId,key,group,expectedRevision){
+ assertReady();if(!/^g_[A-Za-z0-9_.~-]+$/.test(key)||key.length>300)throw Error('Identificador de llave incorrecto.');
+ const ref=doc(db,root,roomId,'eliminations',key),publicRef=doc(db,publicRoot,roomId),publicBracket=doc(publicRef,'eliminations',key);
+ return runTransaction(db,async tx=>{
+  const roomSnap=await tx.get(doc(db,root,roomId)),old=await tx.get(ref),published=await tx.get(publicRef);
+  if(!roomSnap.exists()||roomSnap.data().ownerUid!==currentUid()||roomSnap.data().status!=='running')throw Error('Solo el organizador con la competencia iniciada puede editar llaves.');
+  const prior=old.exists()?old.data().revision:-1;
+  if(prior!==expectedRevision)throw Error('CONFLICTO: la llave fue modificada en otro dispositivo. Revisa la versión más reciente antes de continuar.');
+  const data={category:group.category,size:group.size,mode:group.mode,seeds:group.seeds,qualification:group.qualification,matches:group.matches,bronze:group.bronze,
+    createdAt:old.exists()?old.data().createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),revision:prior+1};
+  if(JSON.stringify(data).length>180000)throw Error('Llave supera el tamaño seguro del piloto.');
+  tx.set(ref,data);if(published.exists())tx.set(publicBracket,data);
+  return data;
+ });
+}
 // Público: nombre/categoría y resumen para clasificación. Las coordenadas se liberan SOLO tras validación.
 function tally(shots){return shots.reduce((n,s)=>n+(s.score==='M'?0:Number(s.score)||0),0);}
 function publicScore(card){
@@ -179,6 +197,9 @@ export async function publishSpectatorEvent(ev,cards){
   for(const [key,card] of cards.slice(i,i+8))batch.set(doc(ref,'scores',String(key)),publicScore(card));
   await batch.commit();
  }
+ // Copia pública de las llaves existentes. No contiene firmas ni identificadores de cuentas.
+ const existingBrackets=await getDocs(collection(roomRef,'eliminations'));
+ for(const d of existingBrackets.docs)await setDoc(doc(ref,'eliminations',d.id),d.data());
  return ev.cloudRoomId;
 }
 export async function setSpectatorVisibility(roomId,enabled){
@@ -193,7 +214,7 @@ export function watchPublicDirectory(onChange,onError){
   onChange(snap.docs.map(x=>({id:x.id,...x.data()})).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));
  },onError);
 }
-export function watchPublicEvent(roomId,{onRoom,onScores,onError}){
+export function watchPublicEvent(roomId,{onRoom,onScores,onBrackets,onError}){
  assertReady();if(!/^[\w-]{20,24}$/.test(roomId))throw Error('Enlace público incorrecto.');
  const ref=doc(db,publicRoot,roomId);
  const a=onSnapshot(ref,snap=>{
@@ -201,5 +222,6 @@ export function watchPublicEvent(roomId,{onRoom,onScores,onError}){
   else onRoom({id:snap.id,...snap.data()});
  },onError);
  const b=onSnapshot(collection(ref,'scores'),snap=>onScores(snap.docs.map(x=>x.data())),onError);
- return ()=>{a();b()};
+ const c=onSnapshot(collection(ref,'eliminations'),snap=>onBrackets(snap.docs.map(x=>x.data())),onError);
+ return ()=>{a();b();c()};
 }
