@@ -1,11 +1,12 @@
 /** WA Scoring — Firebase pilot 0.5.3. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 const config=window.WA_FIREBASE_CONFIG||{};
 export const isConfigured=Boolean(config.apiKey&&config.projectId&&config.appId&&config.authDomain);
 let app,auth,db;
 const root='waRooms';
+const publicRoot='waPublicEvents';
 // Firestore no permite arrays anidados directamente (ends = [[flechas], ...]).
 // Guardamos cada tanda como un mapa {shots:[...]}; en la app permanecen arrays normales.
 // El mismo formato se usa dentro de las revisiones históricas firmadas.
@@ -121,14 +122,84 @@ export async function startRoom(roomId,requiredTargets){
 export async function updateCard(roomId,number,expectedRevision,nextResult){
  assertReady();const ref=doc(db,root,roomId,'cards',String(number));
  const result=structuredClone(nextResult);
+ const publicRef=doc(db,publicRoot,roomId),publicCardRef=doc(publicRef,'scores',String(number));
  if(JSON.stringify(result).length>800000)throw Error('La planilla supera el tamaño permitido por Firestore. Exporta un respaldo y consulta al organizador.');
  return runTransaction(db,async tx=>{
   const snap=await tx.get(ref);
+  const published=await tx.get(publicRef);
   if(!snap.exists())throw Error('Planilla no encontrada en el servidor');
   const previous=snap.data();
   if(previous.revision!==expectedRevision)throw Error('CONFLICTO: la planilla cambió en otro teléfono. Se mostrará la versión más reciente; verifica antes de repetir el toque.');
   const card={...previous,ends:result.ends,current:result.current,status:result.status,validation:result.validation||{status:'pending',decision:null,archerSignature:null,scorerSignature:null},revisions:result.revisions||[],revision:previous.revision+1,lastWriterUid:currentUid(),updatedAt:new Date().toISOString()};
   tx.update(ref,toFirestoreCard(card));
+  if(published.exists())tx.set(publicCardRef,publicScore(card));
   return card;
  });
+}
+
+// Público: nombre/categoría y resumen para clasificación. Las coordenadas se liberan SOLO tras validación.
+function tally(shots){return shots.reduce((n,s)=>n+(s.score==='M'?0:Number(s.score)||0),0);}
+function publicScore(card){
+ const full=(card.ends||[]).flat().concat(card.current||[]);
+ const validated=card.status==='finished'&&card.validation?.status==='validated';
+ return {number:card.number,target:card.target,position:card.position,
+  points:tally(full),arrows:full.length,complete:card.status==='finished',validated,
+  revision:card.revision,updatedAt:card.updatedAt,
+  detailedEnds:validated?packEnds(card.ends||[]):[],
+  };
+}
+function safePublicParticipants(ev){
+ return (ev.draw||[]).map(d=>{
+  const a=ev.entries.find(x=>x.number===d.number&&!x.vacant);
+  if(!a)return null;
+  return {number:d.number,name:a.name,division:a.division,age:a.age,level:a.level,
+    gender:a.gender,target:d.target,position:d.position};
+ }).filter(Boolean);
+}
+// El organizador decide expresamente cuándo publicar. No se añaden firmas ni UID de anotadores.
+export async function publishSpectatorEvent(ev,cards){
+ assertReady();
+ if(!ev?.cloudRoomId||ev.cloudRole!=='organizer')throw Error('Solo el organizador puede compartir resultados.');
+ const roomRef=doc(db,root,ev.cloudRoomId),snap=await getDoc(roomRef);
+ if(!snap.exists()||snap.data().ownerUid!==currentUid()||snap.data().status!=='running')
+  throw Error('Es necesario iniciar la competencia y conectarse como organizador.');
+ if(!Array.isArray(cards)||cards.length!==(ev.draw||[]).length)
+  throw Error('Todavía no se han sincronizado todas las planillas. Espera y vuelve a intentar.');
+ const ref=doc(db,publicRoot,ev.cloudRoomId),already=await getDoc(ref),now=new Date().toISOString();
+ const info={roomId:ev.cloudRoomId,name:ev.name,date:ev.date,
+  formatId:ev.formatId,enabled:true,status:'running',schemaVersion:1,updatedAt:now,
+  createdAt:already.exists()?already.data().createdAt:now,participants:safePublicParticipants(ev)};
+ if(!already.exists())await setDoc(ref,info);
+ else await updateDoc(ref,{enabled:true,updatedAt:now});
+ // No sobrescribir revisiones nuevas: los datos vienen del observador confirmado del servidor.
+ // Reglas Firestore: máximo de lecturas de documentos en una escritura por lote.
+ // Cada puntuación consulta su planilla original; limitamos el lote a 8 tarjetas.
+ for(let i=0;i<cards.length;i+=8){
+  const batch=writeBatch(db);
+  for(const [key,card] of cards.slice(i,i+8))batch.set(doc(ref,'scores',String(key)),publicScore(card));
+  await batch.commit();
+ }
+ return ev.cloudRoomId;
+}
+export async function setSpectatorVisibility(roomId,enabled){
+ assertReady();
+ await updateDoc(doc(db,publicRoot,roomId),{enabled:!!enabled,updatedAt:new Date().toISOString()});
+}
+export function watchSpectatorSettings(roomId,onChange,onError){
+ assertReady();return onSnapshot(doc(db,publicRoot,roomId),snap=>onChange(snap.exists()?snap.data():null),onError);
+}
+export function watchPublicDirectory(onChange,onError){
+ assertReady();return onSnapshot(query(collection(db,publicRoot),where('enabled','==',true),limit(30)),snap=>{
+  onChange(snap.docs.map(x=>({id:x.id,...x.data()})).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)));
+ },onError);
+}
+export function watchPublicEvent(roomId,{onRoom,onScores,onError}){
+ assertReady();if(!/^[\w-]{20,24}$/.test(roomId))throw Error('Enlace público incorrecto.');
+ const ref=doc(db,publicRoot,roomId);
+ const a=onSnapshot(ref,snap=>{
+  if(!snap.exists()||snap.data().enabled!==true)onError(Error('Esta competencia no está disponible para espectadores.'));
+  else onRoom({id:snap.id,...snap.data()});
+ },onError);
+ const b=onSnapshot(collection(ref,'scores'),snap=>onScores(snap.docs.map(x=>x.data())),onError);
+ return ()=>{a();b()};
 }

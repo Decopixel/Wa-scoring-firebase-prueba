@@ -84,3 +84,11 @@ button.score-editable.score-edit-selected{outline:3px solid var(--green);outline
 .shot-edit-banner{display:grid;gap:7px;border:2px solid var(--green);background:var(--soft);padding:12px;border-radius:12px;font-size:13px}
 .shot-edit-banner span{color:var(--muted)}
 .shot-edit-banner button{justify-self:start}
+
+/* 0.5.4: modo espectador y biblioteca personal, sin modificar colores WA */
+.nav{grid-template-columns:repeat(5,minmax(0,1fr))}
+.nav button{font-size:9px;min-width:0}
+.nav button .ico{font-size:19px}
+@media(max-width:375px){.nav button{font-size:8px}.nav button .ico{font-size:18px}}
+#spectatorFilter{width:100%}
+.session .btn{justify-self:start}
