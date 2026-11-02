@@ -1,4 +1,4 @@
-/* WA Scoring 0.6.4.2 PILOTO: acceso rápido a eliminatorias con resultados simulados en eventos de prueba. */
+/* WA Scoring 0.6.4.3 PILOTO: estabilización de revisiones en anotación remota de flechas. */
 (()=>{'use strict';
 const app=document.querySelector('#app');
 const formats={indoor18:{name:'Indoor · 18 metros',faceCm:40,perEnd:3,maxEnds:20,distance:'18 m',max:600},barebow50:{name:'Barebow · 50 metros',faceCm:122,perEnd:6,maxEnds:12,distance:'50 m',max:720},recurve70:{name:'Recurvo Olímpico · 70 metros',faceCm:122,perEnd:6,maxEnds:12,distance:'70 m',max:720}};
@@ -7,12 +7,39 @@ let sessions=[],events=[],personal=[], db;
 const publicState={rooms:[],room:null,scores:[],brackets:[],live:[],error:'',loading:false,stopList:null,stopRoom:null,roomId:''};
 // Sincronización en nube (piloto): módulo desacoplado del historial local de entrenamientos.
 const cloudState={api:null,configured:false,connected:false,error:'',role:null,roomId:'',target:0,localId:'',room:null,cards:[],brackets:{},tasks:[],tasksFromCache:true,fromCache:true,revisions:new Map(),requests:[],members:[],memberName:'',ready:false,pending:false,stop:null,admissionStop:null,syncQueue:Promise.resolve(),publicRoom:null,publicStop:null};
+// 0.6.4.3: no retroceder un marcador de eliminatorias ya CONFIRMADO por Firebase.
+// El listener puede recibir instantáneas antiguas entre dos pulsaciones del tanteador.
+// Cuando un encuentro desaparece de la consulta (revocación o reasignación),
+// NO lo conservamos: la autorización se respeta inmediatamente.
+function reconcileEliminationTasks(previous,incoming){
+ const old=new Map(previous.map(task=>[task.id,task]));
+ return incoming.map(task=>{
+  const prior=old.get(task.id);
+  return prior&&Number.isInteger(prior.revision)&&Number.isInteger(task.revision)&&prior.revision>task.revision?prior:task;
+ });
+}
+function retainConfirmedEliminationTask(saved){
+ cloudState.tasks=reconcileEliminationTasks(cloudState.tasks,[...cloudState.tasks.filter(task=>task.id!==saved.id),saved]);
+}
+// No reenvía flechas de forma automática: una repetición ciega puede duplicarlas.
+async function explainEliminationConflict(error,id){
+ if(!String(error?.message||'').startsWith('CONFLICTO:'))return null;
+ try{
+  const fresh=await cloudState.api.fetchEliminationTask(cloudState.roomId,id);
+  retainConfirmedEliminationTask(fresh);
+  const a=fresh.current?.aShots?.length||0,b=fresh.current?.bShots?.length||0;
+  return `Marcador actualizado desde Firebase (revisión ${fresh.revision}; tanda actual: A ${a}/3, B ${b}/3; tandas cerradas: ${(fresh.ends||[]).length}). COMPRUEBA si esa flecha ya figura antes de volver a anotarla. No se repitió el guardado automáticamente.`;
+ }catch(syncError){
+  cloudState.tasksFromCache=true;
+  return `No se confirmó el estado del encuentro con Firebase (${syncError.message}). NO repitas flechas hasta recuperar la conexión y comprobar el marcador.`;
+ }
+}
 const spectatorURL=room=>`${location.origin}${location.pathname}?waSpectate=${encodeURIComponent(room)}`;
 const cloudRoomURL=(room,target)=>`${location.origin}${location.pathname}?waRoom=${encodeURIComponent(room)}&waTarget=${Number(target)}`;
 function cloudStatusText(){return !cloudState.configured?'No configurado':cloudState.error?'Error de conexión':cloudState.ready&&!cloudState.fromCache?'Conectado en vivo':cloudState.pending?'Esperando autorización':'Preparando conexión';}
 async function initCloud(){
  if(cloudState.connected)return cloudState.api;
- const mod=await import('./cloud.js?v=0.6.4.2');cloudState.api=mod;cloudState.configured=mod.isConfigured;
+ const mod=await import('./cloud.js?v=0.6.4.3');cloudState.api=mod;cloudState.configured=mod.isConfigured;
  if(!cloudState.configured)throw Error('Falta configurar Firebase. Revisa INSTALACION_FIREBASE.md antes de activar el modo en red.');
  await mod.initialize();cloudState.connected=true;return mod;
 }
@@ -58,7 +85,7 @@ function listenCloudRoom(roomId,role,target){
    cloudState.cards=[...incoming];cloudState.revisions=incoming;cloudState.fromCache=fromCache;cloudState.ready=!fromCache;queueCloudSync();
   },
   onBrackets:groups=>{cloudState.brackets=groups;queueCloudSync();},
-  onTasks:(tasks,fromCache)=>{cloudState.tasks=tasks;cloudState.tasksFromCache=fromCache;if(view.page==='elim-remote'||view.page==='event-detail')render();},
+  onTasks:(tasks,fromCache)=>{cloudState.tasks=reconcileEliminationTasks(cloudState.tasks,tasks);cloudState.tasksFromCache=fromCache;if(view.page==='elim-remote'||view.page==='event-detail')render();},
   onRequests:reqs=>{cloudState.requests=reqs;render();},
   onMembers:members=>{cloudState.members=members;queueCloudSync();render();},
   onError:err=>{cloudState.error=err.message;cloudState.ready=false;alertMsg('Error de sincronización: '+err.message,true);}
@@ -150,7 +177,7 @@ function getSub(){return view.page==='elim-remote'?'Anotación remota de elimina
 function modeForPage(){return ['competitions','event-new','event-detail','event-score','cloud-join','elim-remote','personal-history','personal-detail','spectator','spectator-event','spectator-detail'].includes(view.page)?'competition':'training'}
 function base(inner){const nav=[['home','🎯','Entrenar'],['history','🕘','Historial'],['competitions','🏆','Competir'],['spectator','👀','Espectador'],['settings','⚙️','Ajustes']];const at=view.page==='new'||view.page==='score'?'home':view.page==='detail'?'history':view.page==='personal-detail'?'competitions':['event-new','event-detail','event-score','cloud-join','elim-remote','personal-history'].includes(view.page)?'competitions':['spectator-event','spectator-detail'].includes(view.page)?'spectator':view.page;
 const badge=modeForPage()==='competition'&&cloudState.role&&cloudState.ready&&!cloudState.fromCache?'Firebase · en vivo':navigator.onLine?'Datos locales':'Sin conexión · local';
-return `<div class="screen"><header class="top"><div><div class="eyebrow">WORLD ARCHERY · ${modeForPage()==='competition'?'COMPETENCIA':'ENTRENAMIENTO'}</div><h1>WA Scoring</h1><div class="sub">${getSub()} · ${badge} · v0.6.4.2 piloto</div></div><div class="mark">◎</div></header><main class="content">${view.notice?`<div class="notice ${view.error?'':'success'}" role="status">${e(view.notice)} <button type="button" class="btn ghost small" data-action="clear-notice" aria-label="Cerrar aviso">×</button></div>`:''}${inner}</main></div><nav class="nav" aria-label="Secciones principales">${nav.map(([id,ico,label])=>`<button type="button" data-action="nav" data-value="${id}" class="${at===id?'active':''}"><span class="ico">${ico}</span>${label}</button>`).join('')}</nav><section id="print-sheet"></section>`;}
+return `<div class="screen"><header class="top"><div><div class="eyebrow">WORLD ARCHERY · ${modeForPage()==='competition'?'COMPETENCIA':'ENTRENAMIENTO'}</div><h1>WA Scoring</h1><div class="sub">${getSub()} · ${badge} · v0.6.4.3 piloto</div></div><div class="mark">◎</div></header><main class="content">${view.notice?`<div class="notice ${view.error?'':'success'}" role="status">${e(view.notice)} <button type="button" class="btn ghost small" data-action="clear-notice" aria-label="Cerrar aviso">×</button></div>`:''}${inner}</main></div><nav class="nav" aria-label="Secciones principales">${nav.map(([id,ico,label])=>`<button type="button" data-action="nav" data-value="${id}" class="${at===id?'active':''}"><span class="ico">${ico}</span>${label}</button>`).join('')}</nav><section id="print-sheet"></section>`;}
 function metrics(arr,arrLen){const pts=sum(arr),max=arrLen||arr.length;return `<div class="stats"><div class="stat"><b>${pts}</b><small>Puntos</small></div><div class="stat"><b>${arr.length}</b><small>Flechas</small></div><div class="stat"><b>${arr.length?money(pts/arr.length):'—'}</b><small>Promedio</small></div></div>`}
 
 function publicStatSession(number){
@@ -632,7 +659,7 @@ function eliminationsPanel(ev){if(eventState(ev)!=='running')return `<section cl
  return `<div class="soft gap"><div class="row"><strong>${e(category)}</strong><span class="pill ${all?'good':'warn'}">${done}/${players.length} ${ev.testMode?'listas para prueba':'validadas'}</span></div>${has?`<button class="btn block" data-action="elim-select-group" data-value="${e(key)}">Ver llave guardada</button>`:players.length<2?'<small class="muted">Se requieren al menos 2 arqueros.</small>':`<form class="elim-create-form gap" data-category="${e(category)}"><div class="field"><label>Tamaño de llave</label><select name="size">${[8,16,32].map(n=>`<option value="${n}" ${n===defaultSize?'selected':''}>Llave de ${n}</option>`).join('')}</select></div><p class="small muted">Sembrado según la clasificación validada. ${players.length>32?'Máximo 32 plazas; solo avanzan los primeros 32.':''}</p>${tie?`<div class="notice">Hay puntuaciones empatadas. El juez debe confirmar el orden oficial antes de generar la llave.</div><div class="field"><label>Orden oficial de inscripción (separar por coma)</label><input name="officialOrder" value="${ranked.map(p=>p.number).join(', ')}" required><small class="muted">Solo se permite cambiar el orden entre quienes tienen idéntico puntaje total. Revisa los criterios WA para desempate y corte.</small></div><label class="checkrow"><input type="checkbox" name="confirmed" required>El juez / organizador confirmó los empates y el orden oficial</label>`:''}<button type="submit" class="btn primary block" ${!all?'disabled':''}>Generar llave</button></form>`}</div>`}).join('');
  let display='';if(g){const rounds=[...new Set(g.matches.map(m=>m.round))],selected=[...g.matches,g.bronze].find(x=>x.id===view.elimMatch)||g.matches.find(x=>x.a&&x.b)||g.matches[0];
  const pod=window.WA_ELIM.podium(g);display=`${seedingIsCurrent(ev,g)?'':'<div class="notice">⚠ La clasificación cambió desde que se generó la llave. No guardes más enfrentamientos hasta que el juez revise el sembrado.</div>'}<section class="card gap"><div class="row"><h2>Llave: ${e(g.category)}</h2><span class="pill good">${g.size} plazas</span></div><p class="small muted">${g.mode==='sets'?'Barebow / Recurvo: mejor de cinco sets':'Compuesto: cinco tandas acumulativas'}. Los pases libres se calculan automáticamente.</p><div class="elim-rounds">${rounds.map((r,i)=>`<section class="elim-round"><h3>${r===rounds.length-1?'Final oro':r===rounds.length-2?'Semifinales':`Ronda ${i+1}`}</h3>${g.matches.filter(m=>m.round===r).map(m=>eliminationMatchTile(ev,g,m)).join('')}</section>`).join('')}<section class="elim-round"><h3>Final bronce</h3>${eliminationMatchTile(ev,g,g.bronze)}</section></div>${eliminationMatchEditor(ev,g,selected)}${eliminationsRemoteOrganizer(ev,g,selected)}</section><section class="card gap"><h2>Podio</h2>${[['🥇 Oro',pod.gold],['🥈 Plata',pod.silver],['🥉 Bronce',pod.bronze]].map(([label,number])=>`<div class="entry"><strong>${label}</strong><span>${number?e(eliminationName(ev,number)):'Por definir'}</span></div>`).join('')}<span class="pill ${pod.complete?'good':'warn'}">${pod.complete?'Finales registradas':'Pendiente de completar'}</span></section>`;}
- return `<section class="card gap"><h2>5. Eliminatorias individuales · Piloto 0.6.4.2</h2><p class="small muted">Solo se generan llaves con las planillas validadas; en competencias marcadas [PRUEBA] también se admiten planillas simuladas sin firmas. Elige tamaño 8, 16 o 32; si quedan plazas sin arquero habrá pases libres. No modificamos las puntuaciones clasificatorias.</p><div class="sessions">${create}</div></section>${eliminationAssignmentsOverview(ev)}${Object.keys(existing).length?`<section class="card gap"><h3>Llaves existentes</h3><div class="btn-row">${Object.entries(existing).map(([key,group])=>`<button class="btn ${key===view.elimGroup?'primary':''}" data-action="elim-select-group" data-value="${e(key)}">${e(group.category)}</button>`).join('')}</div></section>`:''}${display}`;
+ return `<section class="card gap"><h2>5. Eliminatorias individuales · Piloto 0.6.4.3</h2><p class="small muted">Solo se generan llaves con las planillas validadas; en competencias marcadas [PRUEBA] también se admiten planillas simuladas sin firmas. Elige tamaño 8, 16 o 32; si quedan plazas sin arquero habrá pases libres. No modificamos las puntuaciones clasificatorias.</p><div class="sessions">${create}</div></section>${eliminationAssignmentsOverview(ev)}${Object.keys(existing).length?`<section class="card gap"><h3>Llaves existentes</h3><div class="btn-row">${Object.entries(existing).map(([key,group])=>`<button class="btn ${key===view.elimGroup?'primary':''}" data-action="elim-select-group" data-value="${e(key)}">${e(group.category)}</button>`).join('')}</div></section>`:''}${display}`;
 }
 async function saveEliminationGroup(ev,key,group){if(view.busy)return;view.busy=true;
  try{if(!seedingIsCurrent(ev,group))throw Error('La clasificación fue modificada. Debes revisar los resultados y sembrado antes de continuar.');if(ev.cloudRoomId){if(ev.cloudRole!=='organizer'||cloudState.roomId!==ev.cloudRoomId||!cloudState.ready||cloudState.fromCache)throw Error('Para guardar llaves Firebase debes estar conectado como organizador.');
@@ -734,22 +761,34 @@ if(action==='elim-copy-join'){try{await navigator.clipboard.writeText(value);ale
 if(action==='elim-remote-arrow'){
  const [id,side,score]=String(value).split('|'),task=cloudState.tasks.find(t=>t.id===id);
  if(!task||cloudState.role!=='scorer'||!cloudState.ready||cloudState.fromCache||cloudState.tasksFromCache||view.busy)return alertMsg('Sin permiso o sincronización. Revisa el encuentro.',true);
- try{view.busy=true;await cloudState.api.writeEliminationArrow(cloudState.roomId,id,task.revision,side,score);view.busy=false;const n=(task.current?.[side==='a'?'aShots':'bShots']||[]).length+1;if(n>=3)view.elimSide=side==='a'?'b':'a';}
- catch(err){view.busy=false;alertMsg('Flecha NO guardada: '+err.message,true)}return;
+ view.busy=true;
+ try{
+  // La transacción devuelve la revisión y las flechas realmente confirmadas.
+  // No habilitar la próxima flecha usando un snapshot antiguo.
+  const saved=await cloudState.api.writeEliminationArrow(cloudState.roomId,id,task.revision,side,score);
+  retainConfirmedEliminationTask(saved);
+  if((saved.current?.[side==='a'?'aShots':'bShots']||[]).length>=3)view.elimSide=side==='a'?'b':'a';
+  view.notice='';view.busy=false;render();
+ }catch(err){
+  const detail=await explainEliminationConflict(err,id);
+  view.busy=false;
+  alertMsg(detail||'Flecha NO guardada: '+err.message,true);
+ }
+ return;
 }
 if(action==='elim-remote-correct'){
  const [id,side]=String(value).split('|'),task=cloudState.tasks.find(t=>t.id===id);
  if(!task||cloudState.role!=='scorer'||!cloudState.ready||cloudState.fromCache||cloudState.tasksFromCache||view.busy)return alertMsg('Sin permiso o sincronización.',true);
  if(!confirmAction('¿Retirar la última flecha de este arquero? El organizador verá la corrección.'))return;
- try{view.busy=true;await cloudState.api.undoEliminationArrow(cloudState.roomId,id,task.revision,side);view.busy=false;alertMsg('Flecha retirada de la tanda.');}
- catch(err){view.busy=false;alertMsg('No se pudo corregir: '+err.message,true)}return;
+ try{view.busy=true;const saved=await cloudState.api.undoEliminationArrow(cloudState.roomId,id,task.revision,side);retainConfirmedEliminationTask(saved);view.busy=false;alertMsg('Flecha retirada y sincronizada.');}
+ catch(err){const detail=await explainEliminationConflict(err,id);view.busy=false;alertMsg(detail||'No se pudo corregir: '+err.message,true)}return;
 }
 if(action==='elim-remote-undo'){
  const task=cloudState.tasks.find(t=>t.id===value);
  if(!task||cloudState.role!=='scorer'||!cloudState.ready||cloudState.fromCache||cloudState.tasksFromCache)return alertMsg('Tarea no disponible o sin sincronización.',true);
  if(!confirmAction('¿Retirar la última tanda? Este cambio será visible para el organizador.'))return;
- try{view.busy=true;await cloudState.api.writeEliminationSet(cloudState.roomId,task.id,task.revision,[],[],true);view.busy=false;alertMsg('Última tanda retirada.');}
- catch(err){view.busy=false;alertMsg('No se pudo corregir: '+err.message,true)}return;
+ try{view.busy=true;const saved=await cloudState.api.writeEliminationSet(cloudState.roomId,task.id,task.revision,[],[],true);retainConfirmedEliminationTask(saved);view.busy=false;alertMsg('Última tanda retirada y sincronizada.');}
+ catch(err){const detail=await explainEliminationConflict(err,task.id);view.busy=false;alertMsg(detail||'No se pudo corregir: '+err.message,true)}return;
 }
 if(action==='elim-select-group'){view.elimGroup=value;view.elimMatch=null;render();return;}
 if(action==='elim-select-match'){view.elimMatch=value;render();return;}
@@ -907,16 +946,16 @@ if(evt.target.id==='elimRemoteScoreForm'){
  if(!task||cloudState.role!=='scorer'||!cloudState.ready||cloudState.fromCache||cloudState.tasksFromCache)return alertMsg('Sin autorización o sincronización confirmada.',true);
  const aShots=[0,1,2].map(i=>String(d.get('a'+i)||'').trim().toUpperCase());
  const bShots=[0,1,2].map(i=>String(d.get('b'+i)||'').trim().toUpperCase());
- try{view.busy=true;await cloudState.api.writeEliminationSet(cloudState.roomId,task.id,task.revision,aShots,bShots);view.busy=false;alertMsg('Tanda sincronizada en Firebase.');}
- catch(err){view.busy=false;alertMsg('No se guardó: '+err.message,true)}return;
+ try{view.busy=true;const saved=await cloudState.api.writeEliminationSet(cloudState.roomId,task.id,task.revision,aShots,bShots);retainConfirmedEliminationTask(saved);view.busy=false;alertMsg('Tanda sincronizada en Firebase.');}
+ catch(err){const detail=await explainEliminationConflict(err,task.id);view.busy=false;alertMsg(detail||'No se guardó: '+err.message,true)}return;
 }
 if(evt.target.id==='elimScorerConfirmForm'){
  evt.preventDefault();const d=new FormData(evt.target),task=cloudState.tasks.find(t=>t.id===String(d.get('taskId')));
  if(!task||cloudState.role!=='scorer'||!cloudState.ready||cloudState.fromCache||cloudState.tasksFromCache||view.busy)return alertMsg('Espera la sincronización de Firebase.',true);
  const shootOff=d.get('shootOff')?Number(d.get('shootOff')):null;
  if(!confirmAction('¿Confirmas con los arqueros el resultado del encuentro? Quedará bloqueado en este teléfono y enviado al organizador para su ratificación.'))return;
- try{view.busy=true;await cloudState.api.submitEliminationTask(cloudState.roomId,task.id,task.revision,shootOff);view.busy=false;alertMsg('Resultado confirmado por el tanteador. Encuentro liberado; pendiente de ratificación del organizador.');}
- catch(err){view.busy=false;alertMsg('No se pudo entregar el resultado: '+err.message,true)}return;
+ try{view.busy=true;const saved=await cloudState.api.submitEliminationTask(cloudState.roomId,task.id,task.revision,shootOff);retainConfirmedEliminationTask({id:task.id,...saved});view.busy=false;alertMsg('Resultado confirmado por el tanteador. Encuentro liberado; pendiente de ratificación del organizador.');}
+ catch(err){const detail=await explainEliminationConflict(err,task.id);view.busy=false;alertMsg(detail||'No se pudo entregar el resultado: '+err.message,true)}return;
 }
 if(evt.target.id==='elimCloseForm'){
  evt.preventDefault();const ev=events.find(x=>x.id===view.activeEvent),d=new FormData(evt.target),task=cloudState.tasks.find(t=>t.id===String(d.get('taskId')));
@@ -971,6 +1010,6 @@ app.addEventListener('input',evt=>{
 app.addEventListener('submit',async evt=>{if(evt.target.id!=='createForm')return;evt.preventDefault();const form=evt.target,data=new FormData(form),archer=String(data.get('archer')||'').trim(),title=String(data.get('sessionTitle')||'').trim(),formatId=String(data.get('format')||'');if(!archer||!title||!formats[formatId])return;const s={id:uid(),createdAt:timestamp(),updatedAt:timestamp(),kind:'training',archerName:archer,title,formatId,status:'active',ends:[],current:[],revision:1};try{await persist(s);view.active=s.id;view.page='score';view.detailTab='planilla';view.zoom=1;view.panX=0;view.panY=0;view.notice='';render()}catch(err){alertMsg(`No se pudo crear el entrenamiento: ${err.message}`,true)}});
 app.addEventListener('change',evt=>{if(evt.target.id==='testMode'){const selected=evt.target.checked;const badge=document.getElementById('testModeState');if(badge)badge.textContent=selected?'ACTIVADO':'DESACTIVADO';evt.target.closest('.test-mode-option')?.classList.toggle('test-mode-on',selected);return}if(evt.target.id==='targetSelect'){view.editShot=null;const ev=events.find(x=>x.id===view.activeEvent);const target=Number(evt.target.value);const slots=ev?.draw?.filter(x=>x.target===target)||[];if(slots.length){view.activeTarget=target;view.activePosition=slots[0].position;view.disputeVisible=false;view.correctionVisible=false;view.zoom=1;view.panX=0;view.panY=0;render()}return}if(evt.target.id==='spectatorFilter'){view.spectatorFilter=evt.target.value;render();return}if(evt.target.id==='spectatorLiveFilter'){view.spectatorLiveFilter=evt.target.value;view.spectatorMatchId=null;render();return}if(evt.target.id==='categoryFilter'){view.categoryFilter=evt.target.value;render();return}if(evt.target.id==='impactChoice'){view.impactScope=evt.target.value==='all'?'all':'end';if(view.impactScope==='end')view.impactEnd=Number(evt.target.value);render();return}if(evt.target.id==='importFile'){importFile(evt.target.files?.[0]);evt.target.value='';return}if(evt.target.id==='importEvent'){importEventFile(evt.target.files?.[0]);evt.target.value='';return}if(evt.target.id==='importPersonal'){importPersonalFile(evt.target.files?.[0]);evt.target.value='';return}if(evt.target.id==='leftPriority'){changeEvent(ev=>{if(ev.locked)throw Error('Sorteo bloqueado');ev.preferLeft=evt.target.checked;ev.draw=[]});return}});
 app.addEventListener('input',evt=>{if(evt.target.id==='historySearch'){const val=evt.target.value.toLocaleLowerCase('es');document.querySelectorAll('#historyList>.session').forEach(el=>{el.style.display=el.textContent.toLocaleLowerCase('es').includes(val)?'':'none'})}});
-async function boot(){try{db=await makeDB();await refresh();await migrateUnclosedEnds();const params=new URLSearchParams(location.search);if(params.has('waSpectate'))view.page='spectator-event';else if(params.has('waRoom'))view.page='cloud-join';render();if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./sw.js').catch(()=>{});if(params.has('waSpectate')){openSpectatorRoom(params.get('waSpectate')).catch(err=>alertMsg(err.message,true));}else if(params.has('waRoom')){initCloud().then(()=>render()).catch(err=>{cloudState.error=err.message;alertMsg('Firebase no disponible: '+err.message,true)})}else{import('./cloud.js?v=0.6.4.2').then(mod=>{cloudState.api=mod;cloudState.configured=mod.isConfigured;render()}).catch(()=>{})}}catch(err){app.innerHTML=`<div class="card gap" style="margin-top:25px"><h2>No se pudo iniciar el almacenamiento</h2><p class="small">${e(err.message)}</p><p class="small muted">Abre WA Scoring desde un navegador que permita IndexedDB. No registres flechas hasta resolverlo.</p></div>`}}
+async function boot(){try{db=await makeDB();await refresh();await migrateUnclosedEnds();const params=new URLSearchParams(location.search);if(params.has('waSpectate'))view.page='spectator-event';else if(params.has('waRoom'))view.page='cloud-join';render();if('serviceWorker'in navigator&&(location.protocol==='https:'||location.hostname==='localhost'))navigator.serviceWorker.register('./sw.js').catch(()=>{});if(params.has('waSpectate')){openSpectatorRoom(params.get('waSpectate')).catch(err=>alertMsg(err.message,true));}else if(params.has('waRoom')){initCloud().then(()=>render()).catch(err=>{cloudState.error=err.message;alertMsg('Firebase no disponible: '+err.message,true)})}else{import('./cloud.js?v=0.6.4.3').then(mod=>{cloudState.api=mod;cloudState.configured=mod.isConfigured;render()}).catch(()=>{})}}catch(err){app.innerHTML=`<div class="card gap" style="margin-top:25px"><h2>No se pudo iniciar el almacenamiento</h2><p class="small">${e(err.message)}</p><p class="small muted">Abre WA Scoring desde un navegador que permita IndexedDB. No registres flechas hasta resolverlo.</p></div>`}}
 boot();
 })();

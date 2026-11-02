@@ -1,7 +1,7 @@
-/** WA Scoring — Firebase pilot 0.6.4.2. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
+/** WA Scoring — Firebase pilot 0.6.4.3. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
+import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocFromServer, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 const config=window.WA_FIREBASE_CONFIG||{};
 export const isConfigured=Boolean(config.apiKey&&config.projectId&&config.appId&&config.authDomain);
 let app,auth,db;
@@ -189,7 +189,7 @@ function publicEliminationTask(task){
 }
 function publicLiveRef(roomId,id){return doc(db,publicRoot,roomId,'elimLive',id);}
 
-// PILOTO 0.6.4.2: comprobación de cupos. El conteo se revisa nuevamente
+// PILOTO 0.6.4.3: comprobación de cupos. El conteo se revisa nuevamente
 // dentro de la transacción para detectar cambios en asignaciones conocidas.
 // No constituye garantía de concurrencia contra dos creaciones simultáneas
 // por organizadores distintos: requiere control de capacidad en el servidor.
@@ -306,6 +306,15 @@ export async function writeEliminationArrow(roomId,id,expectedRevision,side,raw)
   if(published.exists())tx.set(publicLiveRef(roomId,id),publicEliminationTask(updated));
   return {id,...updated};
  });
+}
+// Lectura explícita del servidor para diagnosticar conflictos de revisión.
+// getDocFromServer evita confundir una copia de caché con flechas guardadas.
+export async function fetchEliminationTask(roomId,id){
+ assertReady();
+ if(!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(id))throw Error('Encuentro inválido.');
+ const snapshot=await getDocFromServer(doc(db,root,roomId,'elimTasks',id));
+ if(!snapshot.exists())throw Error('El encuentro ya no existe.');
+ return {id,...snapshot.data()};
 }
 export async function undoEliminationArrow(roomId,id,expectedRevision,side){
  assertReady();if(!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(id)||!['a','b'].includes(side))throw Error('Encuentro incorrecto.');
