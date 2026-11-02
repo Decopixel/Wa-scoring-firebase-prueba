@@ -115,3 +115,56 @@ button.score-editable.score-edit-selected{outline:3px solid var(--green);outline
 .elim-arrow-buttons .btn{min-width:0;padding:10px 2px;font-weight:700;font-size:14px}
 .elim-arrow-chip{display:inline-flex;min-width:40px;justify-content:center;padding:9px 13px;border:1px solid var(--line,#bcc7d4);border-radius:10px;font-weight:700}
 @media(max-width:360px){.elim-arrow-buttons{grid-template-columns:repeat(4,minmax(0,1fr))}}
+
+/* v0.6.2 · Marcador de eliminatoria: pantalla por encuentro y set (móvil) */
+.elim-board{display:grid;gap:12px;min-width:0}
+.elim-board-label{text-align:center;font-size:10px;letter-spacing:.14em;font-weight:900;color:var(--muted)}
+.elim-versus{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:9px;align-items:stretch;border:1px solid var(--line);border-radius:14px;padding:9px;background:var(--card)}
+.elim-side{display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;min-width:0;padding:9px 4px;border-radius:11px}
+.elim-side.leader{background:#daebd6;color:#20542a}
+.elim-side strong{font-size:38px;line-height:1;font-weight:850;font-variant-numeric:tabular-nums}
+.elim-side .elim-person{font-size:12px;font-weight:800;line-height:1.25;text-align:center;overflow-wrap:anywhere}
+.elim-dash{font-size:24px;font-weight:800;align-self:center;color:var(--muted)}
+.elim-state{text-align:center;padding:10px 12px;border:1px solid #ebcd8c;background:#fff2d3;border-radius:11px;color:#80571a;font-weight:800;font-size:12px}
+.elim-state.is-decided{background:#d9efdc;color:#145a30;border-color:#aedcb3}
+.elim-current{display:grid;gap:9px;padding:13px;background:var(--soft);border-radius:13px}
+.elim-current-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+.elim-current-cols>div{min-width:0;display:grid;gap:8px;padding:9px;background:var(--card);border:1px solid var(--line);border-radius:10px}
+.elim-current-cols>div>span{font-size:11px;font-weight:800;overflow-wrap:anywhere;min-height:27px}
+.elim-current-cols>div>strong{font-size:13px;text-align:center;font-variant-numeric:tabular-nums}
+.elim-three{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+.elim-three .elim-arrow-chip{padding:6px 1px;min-width:0;font-size:16px}
+.elim-arrow-chip.filled{background:#fff;border-color:#cbbf9d}
+.elim-history{display:grid;gap:6px}
+.elim-history>strong{font-size:13px}
+.elim-set-line{display:grid;grid-template-columns:55px 48px minmax(0,1fr);gap:4px 8px;align-items:center;border:1px solid var(--line);border-radius:9px;padding:9px;background:var(--card)}
+.elim-set-label{font-size:12px;font-weight:800}
+.elim-set-line>strong{font-variant-numeric:tabular-nums}
+.elim-set-winner{font-size:12px;font-weight:700;color:var(--green);overflow-wrap:anywhere}
+.elim-set-line>small{grid-column:1/-1;color:var(--muted);overflow-wrap:anywhere}
+.elim-keypad-panel{display:grid;gap:12px;padding:12px 9px;border:2px solid var(--green);border-radius:14px;background:var(--soft)}
+.elim-keypad-panel>strong{font-size:12px;text-align:center}
+.elim-pick{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.elim-pick-side{min-width:0;display:grid;gap:4px;padding:11px 8px;border:1px solid var(--line);border-radius:11px;background:var(--card);color:var(--ink);text-align:center}
+.elim-pick-side.selected{border:2px solid var(--green);background:#e0efdd;box-shadow:0 0 0 1px var(--green)}
+.elim-pick-side>span{font-size:12px;font-weight:800;overflow-wrap:anywhere}
+.elim-pick-side>small{font-size:11px;color:var(--muted)}
+.elim-keypad-title{text-align:center;font-weight:800;font-size:14px;overflow-wrap:anywhere}
+.elim-arrow-buttons{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}
+.elim-arrow-buttons .btn{min-width:0;min-height:49px;padding:7px 1px;font-size:19px;font-weight:850;border-radius:10px}
+.elim-arrow-buttons .btn[data-value$="|X"],.elim-arrow-buttons .btn[data-value$="|10"],.elim-arrow-buttons .btn[data-value$="|9"]{background:#f6da4d;color:#2a2417;border-color:#bdab4c}
+.elim-arrow-buttons .btn[data-value$="|8"],.elim-arrow-buttons .btn[data-value$="|7"]{background:#d8483c;color:white;border-color:#a62c25}
+.elim-arrow-buttons .btn[data-value$="|6"],.elim-arrow-buttons .btn[data-value$="|5"]{background:#177ab7;color:white;border-color:#1b5f90}
+.elim-arrow-buttons .btn[data-value$="|4"],.elim-arrow-buttons .btn[data-value$="|3"]{background:#282c30;color:white;border-color:#131517}
+.elim-arrow-buttons .btn[data-value$="|M"]{background:#dedede;color:#454545}
+.elim-public-match{border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:10px;background:var(--card)}
+.elim-public-trigger{display:flex;align-items:center;justify-content:space-between;gap:7px;width:100%;border:0;background:transparent;color:var(--ink);padding:5px;text-align:left}
+.elim-public-trigger>div{display:grid;gap:4px;min-width:0;flex:1}
+.elim-public-trigger strong{font-size:12px;overflow-wrap:anywhere}
+.elim-public-trigger small{font-size:10px;color:var(--muted);overflow-wrap:anywhere}
+.elim-public-score{font-size:21px;font-weight:900;white-space:nowrap;font-variant-numeric:tabular-nums}
+@media(max-width:380px){.elim-side strong{font-size:31px}.elim-side .elim-person{font-size:11px}.elim-arrow-buttons{grid-template-columns:repeat(6,minmax(0,1fr))}.elim-arrow-buttons .btn{font-size:17px;min-height:44px}.elim-board{gap:9px}.elim-pick-side{padding:9px 4px}}
+
+/* 0.6.3 — indicación del orden de tiro, visible para anotador y espectador */
+.elim-shoot-info{display:grid;gap:5px;border:1px solid #87b2d0;background:#eaf4ff;color:#163d5d;border-radius:12px;padding:12px;font-size:13px;line-height:1.45;}
+.elim-shoot-info strong{font-size:14px}.elim-shoot-info small{display:block;color:#375b73;font-size:12px;}
