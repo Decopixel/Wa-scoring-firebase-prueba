@@ -169,7 +169,7 @@ button.score-editable.score-edit-selected{outline:3px solid var(--green);outline
 .elim-shoot-info{display:grid;gap:5px;border:1px solid #87b2d0;background:#eaf4ff;color:#163d5d;border-radius:12px;padding:12px;font-size:13px;line-height:1.45;}
 .elim-shoot-info strong{font-size:14px}.elim-shoot-info small{display:block;color:#375b73;font-size:12px;}
 
-/* v0.6.4.1: restablece el control de checkbox nativo en Safari/iOS.
+/* v0.6.4.2: restablece el control de checkbox nativo en Safari/iOS.
    La regla general input { appearance:none } ocultaba la marca de seleccionado. */
 input[type="checkbox"] {
   -webkit-appearance: checkbox; appearance: auto;

@@ -1,4 +1,4 @@
-/** WA Scoring — Firebase pilot 0.6.4.1. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
+/** WA Scoring — Firebase pilot 0.6.4.2. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
@@ -189,11 +189,31 @@ function publicEliminationTask(task){
 }
 function publicLiveRef(roomId,id){return doc(db,publicRoot,roomId,'elimLive',id);}
 
+// PILOTO 0.6.4.2: comprobación de cupos. El conteo se revisa nuevamente
+// dentro de la transacción para detectar cambios en asignaciones conocidas.
+// No constituye garantía de concurrencia contra dos creaciones simultáneas
+// por organizadores distintos: requiere control de capacidad en el servidor.
+const MAX_ACTIVE_TASKS_PER_SCORER=3;
+async function assignedTaskRefs(roomRef,uid){
+ const snapshot=await getDocs(query(collection(roomRef,'elimTasks'),where('assigneeUid','==',uid)));
+ return snapshot.docs.map(d=>d.ref);
+}
+async function assertAvailableCapacity(tx,refs,excludedIds,newCount){
+ let active=0;
+ for(const ref of refs){
+  const snap=await tx.get(ref);
+  if(snap.exists()&&snap.data().status==='active'&&!excludedIds.has(ref.id))active++;
+ }
+ if(active+newCount>MAX_ACTIVE_TASKS_PER_SCORER)
+  throw Error(`Este teléfono ya tiene ${active} encuentro(s) activo(s). Máximo: ${MAX_ACTIVE_TASKS_PER_SCORER}. Libera otro encuentro o elige otro teléfono.`);
+}
+
 export async function assignEliminationTask(roomId,groupKey,matchId,target,scorerUid,shootingMode="simultaneous",firstSide=null){
  assertReady();if(!Number.isInteger(target)||target<1||target>500||!scorerUid)throw Error('Selecciona parapeto y teléfono autorizado.');
  if(!['simultaneous','alternating'].includes(shootingMode))throw Error('Modalidad de tiro inválida.');
  if(shootingMode==='alternating'&&!['a','b'].includes(firstSide))throw Error('Elige qué arquero comienza el primer set. El mejor clasificado tiene derecho a elegir.');
  const id=taskKey(groupKey,matchId),roomRef=doc(db,root,roomId),ref=doc(roomRef,'elimTasks',id);
+ const usedRefs=await assignedTaskRefs(roomRef,scorerUid);
  return runTransaction(db,async tx=>{
   const rs=await tx.get(roomRef),gs=await tx.get(doc(roomRef,'eliminations',groupKey)),ms=await tx.get(doc(roomRef,'members',scorerUid)),before=await tx.get(ref),published=await tx.get(doc(db,publicRoot,roomId));
   if(!rs.exists()||rs.data().ownerUid!==currentUid()||rs.data().status!=='running')throw Error('Solo el organizador puede asignar teléfonos con el torneo iniciado.');
@@ -203,6 +223,7 @@ export async function assignEliminationTask(roomId,groupKey,matchId,target,score
   if(!match?.a||!match?.b||match.winner)throw Error('Solo puedes asignar encuentros con dos arqueros y sin ganador.');
   const old=before.exists()?before.data():null;
   if(old&&(old.status!=='active'||old.groupKey!==groupKey||old.matchId!==matchId||old.a!==match.a||old.b!==match.b))throw Error('El encuentro cambió o ya fue validado. Actualiza la llave.');
+  await assertAvailableCapacity(tx,usedRefs,new Set([id]),1);
   const now=new Date().toISOString();
   const data=old?{...old,target,assigneeUid:scorerUid,revision:old.revision+1,updatedAt:now,lastWriterUid:currentUid()}:
    {groupKey,matchId,category:group.category,mode:group.mode,a:match.a,b:match.b,target,assigneeUid:scorerUid,status:'active',ends:[],current:{aShots:[],bShots:[]},shootOff:null,shootingMode,firstSide:shootingMode==='alternating'?firstSide:null,revision:0,createdAt:now,updatedAt:now,lastWriterUid:currentUid()};
@@ -219,6 +240,7 @@ export async function transferEliminationTasks(roomId,sourceUid,destinationUid,i
   throw Error('Identificador de tarea incorrecto.');
  const ids=items.map(item=>item.id);if(new Set(ids).size!==ids.length)throw Error('Se repite un encuentro.');
  const roomRef=doc(db,root,roomId);
+ const destinationRefs=await assignedTaskRefs(roomRef,destinationUid);
  return runTransaction(db,async tx=>{
   const room=await tx.get(roomRef),destination=await tx.get(doc(roomRef,'members',destinationUid)),published=await tx.get(doc(db,publicRoot,roomId));
   if(!room.exists()||room.data().ownerUid!==currentUid()||room.data().status!=='running')throw Error('Solo el organizador puede transferir teléfonos.');
@@ -229,6 +251,7 @@ export async function transferEliminationTasks(roomId,sourceUid,destinationUid,i
     throw Error('Una asignación cambió mientras transferías. Actualiza el panel y repite; no se movió ninguna.');
    records.push({ref,data:snap.data()});
   }
+  await assertAvailableCapacity(tx,destinationRefs,new Set(records.map(x=>x.ref.id)),records.length);
   const now=new Date().toISOString();
   for(const {ref,data} of records){const updated={...data,assigneeUid:destinationUid,revision:data.revision+1,lastWriterUid:currentUid(),updatedAt:now};tx.update(ref,{assigneeUid:destinationUid,revision:updated.revision,lastWriterUid:currentUid(),updatedAt:now});if(published.exists())tx.set(publicLiveRef(roomId,ref.id),publicEliminationTask(updated));}
   return records.length;
