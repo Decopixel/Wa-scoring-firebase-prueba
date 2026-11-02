@@ -1,4 +1,4 @@
-/** WA Scoring — Firebase pilot 0.6.4.3. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
+/** WA Scoring — Firebase pilot 0.6.4.5. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
 import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocFromServer, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
@@ -208,10 +208,20 @@ async function assertAvailableCapacity(tx,refs,excludedIds,newCount){
   throw Error(`Este teléfono ya tiene ${active} encuentro(s) activo(s). Máximo: ${MAX_ACTIVE_TASKS_PER_SCORER}. Libera otro encuentro o elige otro teléfono.`);
 }
 
-export async function assignEliminationTask(roomId,groupKey,matchId,target,scorerUid,shootingMode="simultaneous",firstSide=null){
+// Modo predeterminado aprobado para este piloto: simultáneo hasta octavos,
+// alternado desde cuartos (y bronce). Solo se deriva de la llave publicada;
+// nunca de un campo del formulario ni del teléfono anotador.
+function eliminationShootingModeByStage(group,match,matchId){
+ const size=Number(group?.size);
+ if(![8,16,32].includes(size))throw Error('El tamaño de llave no permite determinar la modalidad automática.');
+ if(matchId==='BRONZE')return 'alternating';
+ const maxRound=Math.log2(size)-1;
+ if(!Number.isInteger(match?.round)||match.round<0||match.round>maxRound)
+  throw Error('La ronda del encuentro no es válida para decidir el orden de tiro.');
+ return match.round>=maxRound-2?'alternating':'simultaneous';
+}
+export async function assignEliminationTask(roomId,groupKey,matchId,target,scorerUid){
  assertReady();if(!Number.isInteger(target)||target<1||target>500||!scorerUid)throw Error('Selecciona parapeto y teléfono autorizado.');
- if(!['simultaneous','alternating'].includes(shootingMode))throw Error('Modalidad de tiro inválida.');
- if(shootingMode==='alternating'&&!['a','b'].includes(firstSide))throw Error('Elige qué arquero comienza el primer set. El mejor clasificado tiene derecho a elegir.');
  const id=taskKey(groupKey,matchId),roomRef=doc(db,root,roomId),ref=doc(roomRef,'elimTasks',id);
  const usedRefs=await assignedTaskRefs(roomRef,scorerUid);
  return runTransaction(db,async tx=>{
@@ -221,12 +231,17 @@ export async function assignEliminationTask(roomId,groupKey,matchId,target,score
   if(!gs.exists())throw Error('No existe esta llave.');
   const group=gs.data(),match=matchId==='BRONZE'?group.bronze:group.matches.find(x=>x.id===matchId);
   if(!match?.a||!match?.b||match.winner)throw Error('Solo puedes asignar encuentros con dos arqueros y sin ganador.');
+  const shootingMode=eliminationShootingModeByStage(group,match,matchId);
   const old=before.exists()?before.data():null;
   if(old&&(old.status!=='active'||old.groupKey!==groupKey||old.matchId!==matchId||old.a!==match.a||old.b!==match.b))throw Error('El encuentro cambió o ya fue validado. Actualiza la llave.');
   await assertAvailableCapacity(tx,usedRefs,new Set([id]),1);
+  const aRank=group.seeds?.find(item=>item.number===match.a)?.seed;
+  const bRank=group.seeds?.find(item=>item.number===match.b)?.seed;
+  if(!old&&shootingMode==='alternating'&&(!Number.isInteger(aRank)||!Number.isInteger(bRank)||aRank===bRank))throw Error('No se pudo determinar quién terminó mejor clasificado; revisa la llave.');
+  const choiceOwnerSide=old?.choiceOwnerSide||(Number.isInteger(aRank)&&Number.isInteger(bRank)?(aRank<bRank?'a':'b'):null);
   const now=new Date().toISOString();
   const data=old?{...old,target,assigneeUid:scorerUid,revision:old.revision+1,updatedAt:now,lastWriterUid:currentUid()}:
-   {groupKey,matchId,category:group.category,mode:group.mode,a:match.a,b:match.b,target,assigneeUid:scorerUid,status:'active',ends:[],current:{aShots:[],bShots:[]},shootOff:null,shootingMode,firstSide:shootingMode==='alternating'?firstSide:null,revision:0,createdAt:now,updatedAt:now,lastWriterUid:currentUid()};
+   {groupKey,matchId,category:group.category,mode:group.mode,a:match.a,b:match.b,target,assigneeUid:scorerUid,status:'active',ends:[],current:{aShots:[],bShots:[]},shootOff:null,shootingMode,firstSide:null,choiceOwnerSide,revision:0,createdAt:now,updatedAt:now,lastWriterUid:currentUid()};
   tx.set(ref,data);if(published.exists())tx.set(publicLiveRef(roomId,id),publicEliminationTask(data));return {id,...data};
  });
 }
@@ -255,6 +270,24 @@ export async function transferEliminationTasks(roomId,sourceUid,destinationUid,i
   const now=new Date().toISOString();
   for(const {ref,data} of records){const updated={...data,assigneeUid:destinationUid,revision:data.revision+1,lastWriterUid:currentUid(),updatedAt:now};tx.update(ref,{assigneeUid:destinationUid,revision:updated.revision,lastWriterUid:currentUid(),updatedAt:now});if(published.exists())tx.set(publicLiveRef(roomId,ref.id),publicEliminationTask(updated));}
   return records.length;
+ });
+}
+// El tanteador pregunta al mejor clasificado. Puede corregir antes de la primera flecha;
+// nunca durante un set ni después de transferido el teléfono.
+export async function chooseEliminationFirstSide(roomId,id,expectedRevision,side){
+ assertReady();if(!/^g_[A-Za-z0-9_.~-]+~(R[1-5]M\d{1,2}|BRONZE)$/.test(id)||!['a','b'].includes(side))throw Error('Orden de inicio no válido.');
+ const ref=doc(db,root,roomId,'elimTasks',id);
+ return runTransaction(db,async tx=>{
+  const snap=await tx.get(ref),published=await tx.get(doc(db,publicRoot,roomId));
+  if(!snap.exists())throw Error('Encuentro no disponible.');
+  const task=snap.data();
+  if(task.shootingMode!=='alternating'||task.status!=='active'||task.assigneeUid!==currentUid())throw Error('No tienes autorización para elegir el orden de este encuentro.');
+  if(task.revision!==expectedRevision)throw Error('CONFLICTO: cambió el encuentro. Actualiza antes de elegir.');
+  if((task.ends||[]).length||(task.current?.aShots||[]).length||(task.current?.bShots||[]).length)throw Error('No puedes modificar quién comienza después de la primera flecha.');
+  const now=new Date().toISOString(),updated={...task,firstSide:side,revision:task.revision+1,lastWriterUid:currentUid(),updatedAt:now};
+  tx.update(ref,{firstSide:updated.firstSide,revision:updated.revision,lastWriterUid:updated.lastWriterUid,updatedAt:now});
+  if(published.exists())tx.set(publicLiveRef(roomId,id),publicEliminationTask(updated));
+  return {id,...updated};
  });
 }
 export async function writeEliminationSet(roomId,id,expectedRevision,shotsA,shotsB,undo=false){
@@ -292,6 +325,7 @@ export async function writeEliminationArrow(roomId,id,expectedRevision,side,raw)
   if(!snap.exists())throw Error('Encuentro no disponible.');const task=snap.data();
   if(task.status!=='active'||task.assigneeUid!==currentUid())throw Error('El organizador ya transfirió o cerró este encuentro.');
   if(task.revision!==expectedRevision)throw Error('CONFLICTO: el marcador cambió. Revisa las flechas antes de repetir.');
+  if(task.shootingMode==='alternating'&&!['a','b'].includes(task.firstSide))throw Error('Primero debes registrar quién comienza el primer set.');
   if(nextSetResult(task,task.ends||[]).final||task.ends.length>=5)throw Error('No se admiten flechas: el encuentro terminó o necesita desempate.');
   const current=structuredClone(task.current||{aShots:[],bShots:[]}),key=side==='a'?'aShots':'bShots';
   if(current[key].length>=3)throw Error('Ese arquero ya tiene tres flechas en esta tanda.');
