@@ -201,3 +201,45 @@ input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
 .elim-first-buttons{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .elim-first-buttons .btn{white-space:normal;min-height:48px;overflow-wrap:anywhere}
 @media(max-width:420px){.elim-first-buttons{grid-template-columns:1fr}}
+
+/* v0.6.4.6 PILOTO — compatibilidad con Safari iOS.
+   Evita la capa transformada de la barra fija, que puede desacoplarse del
+   viewport mientras se hace scroll/zoom en iPhone. Conservar la diana táctil. */
+.nav {
+  left: 0;
+  right: 0;
+  margin-left: auto;
+  margin-right: auto;
+  transform: none;
+  -webkit-transform: none;
+}
+/* Safari amplía la página al enfocar controles con tipografía <16px.
+   Se limita a dispositivos táctiles y no altera el tamaño de otros textos. */
+@media (hover: none) and (pointer: coarse) {
+  input:not([type="checkbox"]), select, textarea { font-size: 16px; }
+}
+
+/* v0.6.4.7 — aviso PWA: fuera de #app para sobrevivir al render.
+   Se oculta por completo mientras se anota una tanda/encuentro. */
+.wa-update-banner[hidden] { display:none !important; }
+.wa-update-banner {
+  position: fixed;
+  z-index: 50;
+  left:0; right:0; bottom:calc(78px + env(safe-area-inset-bottom));
+  max-width:640px;
+  margin:0 auto;
+  padding:13px 15px;
+  border:1px solid #aacbb5;
+  border-radius:15px;
+  background:#f2fff4;
+  box-shadow:0 8px 30px #1b3c2540;
+  color:#16402a;
+  font-size:14px;
+  line-height:1.4;
+}
+.wa-update-header {display:flex;gap:9px;align-items:center;font-size:15px}
+.wa-update-banner p {margin:7px 0 11px}
+.wa-update-actions {display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.wa-update-actions .btn {min-height:44px;font-size:14px}
+@media(max-width:360px){.wa-update-banner{padding:10px 11px}}
+@media print {.wa-update-banner{display:none!important}}
