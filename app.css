@@ -243,3 +243,47 @@ input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
 .wa-update-actions .btn {min-height:44px;font-size:14px}
 @media(max-width:360px){.wa-update-banner{padding:10px 11px}}
 @media print {.wa-update-banner{display:none!important}}
+
+/* v0.6.4.8 PILOTO · SOLO ENTRENAMIENTO: planilla de cuatro tandas táctil. */
+.training-compact-page{gap:11px;padding:12px}
+.training-compact-top{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.training-compact-top h2{font-size:18px}
+.training-top-score{display:grid;justify-items:end;gap:1px;white-space:nowrap}
+.training-top-score strong{font-size:25px;font-weight:800;line-height:1.05;font-variant-numeric:tabular-nums}
+.training-top-score small{font-size:10px}
+.training-target .target-wrap{max-width:340px;padding:5px;background:var(--soft)}
+.training-target .target-controls{margin-top:6px}
+.training-target .target-controls .small{font-size:11px}
+.training-target .footer-note{padding:2px;font-size:10px}
+.training-sheet{display:grid;gap:7px;border-top:1px solid var(--line);padding-top:10px;min-width:0}
+.training-sheet-title{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.training-sheet-title h3{font-size:14px}
+.training-sheet-title .small{font-size:10px;text-align:right}
+.training-compact-grid{display:grid;grid-template-columns:26px repeat(var(--training-columns),minmax(0,1fr)) 37px 43px;gap:4px;align-items:center;min-width:0}
+.training-compact-head{text-align:center;color:var(--muted);font-size:10px;font-weight:700}
+.training-compact-scroll{height:204px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;touch-action:pan-y;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:var(--line) transparent;border-radius:7px}
+.training-compact-rows{display:grid;gap:6px}
+.training-end-row{height:46px;min-height:46px}
+.training-current-row .training-index{color:var(--green);font-weight:850}
+.training-index,.training-subtotal,.training-cumulative{font-size:12px;font-weight:700;text-align:center;font-variant-numeric:tabular-nums}
+.training-arrow{height:44px;min-height:44px;min-width:0;padding:0;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:1px;font-size:17px;font-weight:800;font-variant-numeric:tabular-nums}
+.training-arrow.score-box{height:44px;min-height:44px;font-size:17px}
+.training-arrow.score-editable small{font-size:8px}
+.training-empty{background:var(--soft);color:var(--muted);border:1px dashed var(--line);font-weight:400}
+.training-sheet-tip{font-size:10px;text-align:center;line-height:1.3}
+.training-reachable{display:grid;gap:9px;border-top:1px solid var(--line);padding-top:10px}
+.training-reachable-top{display:flex;align-items:center;justify-content:space-between;gap:7px;font-size:12px;font-weight:700}
+.training-reachable-top strong{color:var(--green);font-size:26px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.training-reachable-top strong small{font-size:12px;font-weight:500;color:var(--muted)}
+.training-mini-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.training-mini-metrics>div{display:grid;align-content:center;justify-items:center;gap:4px;min-width:0;padding:7px 4px;background:var(--soft);border-radius:9px;text-align:center;min-height:64px}
+.training-mini-metrics small{font-size:10px;color:var(--muted);line-height:1.2}
+.training-mini-metrics strong{font-size:18px;font-variant-numeric:tabular-nums}
+.training-secondary-actions{display:grid;gap:5px}
+@media(max-width:380px){
+ .training-compact-page{padding:10px}
+ .training-compact-grid{grid-template-columns:20px repeat(var(--training-columns),minmax(0,1fr)) 32px 38px;gap:3px}
+ .training-arrow.score-box{font-size:15px}
+ .training-arrow.score-editable small{font-size:7px}
+ .training-mini-metrics small{font-size:9px}
+}
