@@ -1,7 +1,7 @@
 /** WA Scoring — Firebase pilot 0.6.4.5. Solo datos públicos de configuración; jamás serviceAccount/privateKey. */
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-app.js';
 import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-auth.js';
-import { getFirestore, collection, doc, setDoc, updateDoc, getDoc, getDocFromServer, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
+import { getFirestore, serverTimestamp, Timestamp, collection, doc, setDoc, updateDoc, getDoc, getDocFromServer, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 const config=window.WA_FIREBASE_CONFIG||{};
 export const isConfigured=Boolean(config.apiKey&&config.projectId&&config.appId&&config.authDomain);
 let app,auth,db;
@@ -492,4 +492,25 @@ export function watchPublicEvent(roomId,{onRoom,onScores,onBrackets,onLive,onErr
  const c=onSnapshot(collection(ref,'eliminations'),snap=>onBrackets(snap.docs.map(x=>x.data())),onError);
  const d=onSnapshot(collection(ref,'elimLive'),snap=>onLive?.(snap.docs.map(x=>({id:x.id,...x.data()}))),onError);
  return ()=>{a();b();c();d()};
+}
+
+// Intercambio de entrenamientos v0.6.4.13: documentos separados de waRooms y waPublicEvents.
+const trainingSharesRoot='waTrainingShares';
+export async function publishTrainingShare(payload,{archerName,title,formatId}){
+ await initialize();assertReady();
+ if(typeof payload!=='string'||payload.length>100000)throw Error('El entrenamiento excede el tamaño permitido (100.000 caracteres).');
+ if(!archerName||archerName.length>90||!title||title.length>90||!['indoor18','barebow50','recurve70'].includes(formatId))throw Error('Datos de entrenamiento no válidos.');
+ const ref=doc(collection(db,trainingSharesRoot));
+ const expiresAt=Timestamp.fromMillis(Date.now()+7*24*60*60*1000);
+ await setDoc(ref,{schemaVersion:1,ownerUid:currentUid(),createdAt:serverTimestamp(),expiresAt,archerName,title,formatId,payload});
+ return ref.id;
+}
+export async function getTrainingShare(code){
+ await initialize();assertReady();
+ if(!/^[A-Za-z0-9]{20}$/.test(code))throw Error('El código de entrenamiento no es válido.');
+ const snap=await getDocFromServer(doc(db,trainingSharesRoot,code));
+ if(!snap.exists())throw Error('No se encontró el entrenamiento. El enlace podría haber vencido.');
+ const data=snap.data();
+ if(data.schemaVersion!==1||typeof data.payload!=='string'||data.payload.length>100000||data.expiresAt?.toMillis?.()<=Date.now())throw Error('Enlace vencido o incompatible.');
+ return data;
 }

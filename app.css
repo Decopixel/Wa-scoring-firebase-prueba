@@ -287,3 +287,11 @@ input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
  .training-arrow.score-editable small{font-size:7px}
  .training-mini-metrics small{font-size:9px}
 }
+
+/* 0.6.4.14 - lectura de agrupación y acceso voluntario a ChatGPT */
+.grouping-help{border:1px solid var(--line);background:var(--soft);border-radius:12px;padding:11px;display:grid;gap:7px;font-size:12px}
+.grouping-help strong{font-size:13px}
+.grouping-help p{font-size:12px;line-height:1.5}
+.grouping-help .btn{white-space:normal;text-align:center;min-height:42px}
+.analysis-help{background:var(--card);border-style:dashed}
+@media(max-width:380px){.grouping-help{padding:9px}}

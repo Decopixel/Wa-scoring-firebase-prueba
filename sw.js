@@ -1,10 +1,10 @@
-/* WA Scoring v0.6.4.12 PILOTO: espera aprobación para activar nueva versión. */
-const VERSION = '0.6.4.12';
-const CACHE = 'wa-scoring-shell-v28';
+/* WA Scoring v0.6.4.14 PILOTO: espera aprobación para activar nueva versión. */
+const VERSION = '0.6.4.14';
+const CACHE = 'wa-scoring-shell-v30';
 const FILES = [
-  './', './index.html', './app.css?v=0.6.4.12', './app.js?v=0.6.4.12',
-  './updates.js?v=0.6.4.12',
-  './cloud.js?v=0.6.4.5', './eliminations.js?v=0.6.4.5',
+  './', './index.html', './app.css?v=0.6.4.14', './app.js?v=0.6.4.14',
+  './updates.js?v=0.6.4.14',
+  './cloud.js?v=0.6.4.14', './eliminations.js?v=0.6.4.5',
   './qr.js?v=0.6.4.5', './firebase-config.js?v=0.6.4.5',
   './manifest.webmanifest', './icon-192.png', './icon-512.png'
 ];
