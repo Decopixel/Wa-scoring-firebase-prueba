@@ -295,3 +295,34 @@ input[type="checkbox"]:disabled { cursor: not-allowed; opacity: .55; }
 .grouping-help .btn{white-space:normal;text-align:center;min-height:42px}
 .analysis-help{background:var(--card);border-style:dashed}
 @media(max-width:380px){.grouping-help{padding:9px}}
+
+/* v0.6.4.15 · Presentación accesible de bienvenida y Acerca de. */
+.wa-about-hero{background:linear-gradient(145deg,#fff,#eaf3ff);gap:12px}
+.wa-about-hero h2{font-size:23px;line-height:1.2}
+.wa-about-chips{display:flex;flex-wrap:wrap;gap:6px}
+.wa-about-chips span{font-size:11px;font-weight:700;color:#174C83;background:#dbeafe;border-radius:99px;padding:6px 9px}
+.wa-about-section{gap:11px}
+.wa-about-section h2{font-size:18px}
+.wa-about-section p,.wa-about-credits p{line-height:1.55}
+.wa-about-section ul,.wa-about-section ol{padding-left:23px;margin:0;display:grid;gap:9px}
+.wa-about-section li{line-height:1.5;padding-left:2px}
+.wa-about-stats li::marker{font-weight:800;color:#1976d2}
+.wa-about-tip{background:#eef3f9;border-radius:12px;padding:12px;display:grid;gap:5px;font-size:13px}
+.wa-about-credits{text-align:center;justify-items:center;border:1px solid #bad4f1;background:#f6faff}
+.wa-about-credits .btn{width:100%;margin-top:7px}
+
+
+/* WA Scoring 0.6.4.16 · Novedades tras actualizar. No altera el flujo de puntuación. */
+body.wa-release-open{overflow:hidden}
+.wa-release-overlay[hidden]{display:none!important}
+.wa-release-overlay{position:fixed;inset:0;z-index:2000;background:rgba(15,23,42,.64);display:flex;align-items:center;justify-content:center;padding:calc(12px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));overflow-y:auto;-webkit-overflow-scrolling:touch}
+.wa-release-dialog{width:min(100%,430px);max-height:min(82dvh,680px);overflow-y:auto;overscroll-behavior:contain;background:#fff;color:#172033;border-radius:19px;box-shadow:0 20px 80px rgba(0,0,0,.26);padding:20px 18px;display:grid;gap:13px}
+.wa-release-dialog:focus{outline:none}
+.wa-release-dialog h2{font-size:22px;line-height:1.2;margin:0}
+.wa-release-dialog p{font-size:13px;line-height:1.5;margin:0}
+.wa-release-dialog .wa-release-version{display:inline-block;font-weight:750;font-size:12px;color:#17518f;background:#e4f0ff;border-radius:25px;padding:6px 10px;justify-self:start}
+.wa-release-dialog .wa-release-list{margin:0;padding-left:23px;display:grid;gap:10px;font-size:14px;line-height:1.45}
+.wa-release-dialog .wa-release-caption{font-size:12px;color:#556277;background:#f1f5f9;padding:10px;border-radius:9px}
+.wa-release-dialog .wa-release-ok{min-height:48px;width:100%}
+@media(max-width:370px){.wa-release-dialog{padding:16px 13px}.wa-release-dialog h2{font-size:20px}}
+@media print{.wa-release-overlay{display:none!important}}
