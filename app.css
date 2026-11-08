@@ -326,3 +326,8 @@ body.wa-release-open{overflow:hidden}
 .wa-release-dialog .wa-release-ok{min-height:48px;width:100%}
 @media(max-width:370px){.wa-release-dialog{padding:16px 13px}.wa-release-dialog h2{font-size:20px}}
 @media print{.wa-release-overlay{display:none!important}}
+
+/* v0.6.4.17 · Bienvenida de lectura completa y créditos discretos en pantallas iniciales. */
+body[data-wa-page="welcome"] #app{padding-bottom:calc(18px + env(safe-area-inset-bottom))}
+.wa-project-credit{margin-top:6px;line-height:1.45;overflow-wrap:break-word}
+.wa-project-credit strong{font-weight:750}

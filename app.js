@@ -1,4 +1,4 @@
-/* WA Scoring 0.6.4.16 PILOTO (avisos de actualización controlada): organizador asigna solo teléfono y parapeto; modalidad automática en Firestore según fase y elección inicial en anotador. */
+/* WA Scoring 0.6.4.17 PILOTO (avisos de actualización controlada): organizador asigna solo teléfono y parapeto; modalidad automática en Firestore según fase y elección inicial en anotador. */
 (()=>{'use strict';
 const app=document.querySelector('#app');
 const formats={indoor18:{name:'Indoor · 18 metros',faceCm:40,perEnd:3,maxEnds:20,distance:'18 m',max:600},barebow50:{name:'Barebow · 50 metros',faceCm:122,perEnd:6,maxEnds:12,distance:'50 m',max:720},recurve70:{name:'Recurvo Olímpico · 70 metros',faceCm:122,perEnd:6,maxEnds:12,distance:'70 m',max:720}};
@@ -40,7 +40,7 @@ const cloudRoomURL=(room,target)=>`${location.origin}${location.pathname}?waRoom
 function cloudStatusText(){return !cloudState.configured?'No configurado':cloudState.error?'Error de conexión':cloudState.ready&&!cloudState.fromCache?'Conectado en vivo':cloudState.pending?'Esperando autorización':'Preparando conexión';}
 async function initCloud(){
  if(cloudState.connected)return cloudState.api;
- const mod=await import('./cloud.js?v=0.6.4.16');cloudState.api=mod;cloudState.configured=mod.isConfigured;
+ const mod=await import('./cloud.js?v=0.6.4.17');cloudState.api=mod;cloudState.configured=mod.isConfigured;
  if(!cloudState.configured)throw Error('Falta configurar Firebase. Revisa INSTALACION_FIREBASE.md antes de activar el modo en red.');
  await mod.initialize();cloudState.connected=true;return mod;
 }
@@ -176,9 +176,15 @@ async function migrateUnclosedEnds(){const older=sessions.filter(s=>s.status==='
 async function destroy(id){await dbCall('readwrite',store=>store.delete(id));await refresh()}
 function getSub(){return view.page==='elim-remote'?'Anotación remota de eliminatorias': view.page==='score'?'Registro de flechas':view.page==='detail'?'Resultados de la sesión':view.page==='training-receive'?'Recibir entrenamiento':view.page==='welcome'?'Bienvenida':view.page==='about'?'Acerca de WA Scoring':view.page==='new'?'Crear sesión':view.page==='history'?'Sesiones guardadas':view.page.startsWith('personal')?'Mis competencias':view.page.startsWith('spectator')?'Espectadores':['competitions','event-new','event-detail','event-score','cloud-join','elim-remote'].includes(view.page)?'Competencias' :view.page==='settings'?'Datos y respaldos':'Entrenamiento WA'}
 function modeForPage(){return ['competitions','event-new','event-detail','event-score','cloud-join','elim-remote','personal-history','personal-detail','spectator','spectator-event','spectator-detail'].includes(view.page)?'competition':'training'}
-function base(inner){const nav=[['home','🎯','Entrenar'],['history','🕘','Historial'],['competitions','🏆','Competir'],['spectator','👀','Espectador'],['settings','⚙️','Ajustes']];const at=['new','score','about','welcome'].includes(view.page)?'home':view.page==='training-receive'?'settings':view.page==='detail'?'history':view.page==='personal-detail'?'competitions':['event-new','event-detail','event-score','cloud-join','elim-remote','personal-history'].includes(view.page)?'competitions':['spectator-event','spectator-detail'].includes(view.page)?'spectator':view.page;
-const badge=modeForPage()==='competition'&&cloudState.role&&cloudState.ready&&!cloudState.fromCache?'Firebase · en vivo':navigator.onLine?'Datos locales':'Sin conexión · local';
-return `<div class="screen"><header class="top"><div><div class="eyebrow">WORLD ARCHERY · ${modeForPage()==='competition'?'COMPETENCIA':'ENTRENAMIENTO'}</div><h1>WA Scoring</h1><div class="sub">${getSub()} · ${badge} · v0.6.4.16 piloto</div></div><div class="mark">◎</div></header><main class="content">${view.notice?`<div class="notice ${view.error?'':'success'}" role="status">${e(view.notice)} <button type="button" class="btn ghost small" data-action="clear-notice" aria-label="Cerrar aviso">×</button></div>`:''}${inner}</main></div><nav class="nav" aria-label="Secciones principales">${nav.map(([id,ico,label])=>`<button type="button" data-action="nav" data-value="${id}" class="${at===id?'active':''}"><span class="ico">${ico}</span>${label}</button>`).join('')}</nav><section id="print-sheet"></section>`;}
+function base(inner){
+ const nav=[['home','🎯','Entrenar'],['history','🕘','Historial'],['competitions','🏆','Competir'],['spectator','👀','Espectador'],['settings','⚙️','Ajustes']];
+ const at=['new','score','about','welcome'].includes(view.page)?'home':view.page==='training-receive'?'settings':view.page==='detail'?'history':view.page==='personal-detail'?'competitions':['event-new','event-detail','event-score','cloud-join','elim-remote','personal-history'].includes(view.page)?'competitions':['spectator-event','spectator-detail'].includes(view.page)?'spectator':view.page;
+ const badge=modeForPage()==='competition'&&cloudState.role&&cloudState.ready&&!cloudState.fromCache?'Firebase · en vivo':navigator.onLine?'Datos locales':'Sin conexión · local';
+ const showCredits=view.page==='home'||view.page==='competitions';
+ // La primera bienvenida no permite saltar la guía mediante navegación inferior.
+ const bottomNav=view.page==='welcome'?'':`<nav class="nav" aria-label="Secciones principales">${nav.map(([id,ico,label])=>`<button type="button" data-action="nav" data-value="${id}" class="${at===id?'active':''}"><span class="ico">${ico}</span>${label}</button>`).join('')}</nav>`;
+ return `<div class="screen"><header class="top"><div><div class="eyebrow">WORLD ARCHERY · ${modeForPage()==='competition'?'COMPETENCIA':'ENTRENAMIENTO'}</div><h1>WA Scoring</h1><div class="sub">${getSub()} · ${badge} · v0.6.4.17 piloto</div>${showCredits?'<div class="sub wa-project-credit">Créditos · Desarrollado por <strong>Michael Opitz Jürgens</strong></div>':''}</div><div class="mark">◎</div></header><main class="content">${view.notice?`<div class="notice ${view.error?'':'success'}" role="status">${e(view.notice)} <button type="button" class="btn ghost small" data-action="clear-notice" aria-label="Cerrar aviso">×</button></div>`:''}${inner}</main></div>${bottomNav}<section id="print-sheet"></section>`;
+}
 function metrics(arr,arrLen){const pts=sum(arr),max=arrLen||arr.length;return `<div class="stats"><div class="stat"><b>${pts}</b><small>Puntos</small></div><div class="stat"><b>${arr.length}</b><small>Flechas</small></div><div class="stat"><b>${arr.length?money(pts/arr.length):'—'}</b><small>Promedio</small></div></div>`}
 
 function publicStatSession(number){
@@ -265,7 +271,7 @@ function rememberTrainingArcherName(name){
  try{localStorage.setItem(LAST_TRAINING_ARCHER_KEY,chosen);}
  catch(_){ /* No bloquear el entrenamiento si falla el recordatorio. */ }
 }
-// 0.6.4.16: bienvenida informativa compartida con «Acerca de».
+// 0.6.4.17: bienvenida informativa compartida con «Acerca de».
 // La preferencia local solo evita repetir la bienvenida; no almacena datos personales.
 const welcomeStorageKey='wa-scoring-welcome-seen-v1';
 function shouldShowWelcome(){
@@ -273,20 +279,22 @@ function shouldShowWelcome(){
   if(localStorage.getItem(welcomeStorageKey)==='1')return false;
   // No presentar una bienvenida sorpresiva a usuarios antiguos con datos guardados.
   if(sessions.length||events.length||personal.length||lastTrainingArcherName()){localStorage.setItem(welcomeStorageKey,'1');return false;}
-  localStorage.setItem(welcomeStorageKey,'1');
+  // Al abrir la guía NO se guarda confirmación. Solo el botón final la completa.
   return true;
- }catch(_){return false;}
+ }catch(_){return !(sessions.length||events.length||personal.length||lastTrainingArcherName());}
 }
 function aboutPage(isWelcome=false){
- const startButton='<button class="btn primary block" data-action="nav" data-value="home">🎯 Comenzar a usar WA Scoring</button>';
+ const startButton=isWelcome
+  ? '<button type="button" class="btn primary block" data-action="welcome-complete">🎯 Comenzar a usar WA Scoring</button>'
+  : '<button type="button" class="btn primary block" data-action="nav" data-value="home">🎯 Volver a Entrenamiento</button>';
  return `<section class="card gap wa-about-hero">
   <div class="eyebrow">${isWelcome?'BIENVENIDA':'ACERCA DE WA SCORING'} · GUÍA DEL ARQUERO</div>
   <h2>${isWelcome?'¡Bienvenido a WA Scoring!':'Conoce WA Scoring'}</h2>
   <p>Una aplicación para registrar cada flecha, analizar tus impactos y entender cómo evoluciona tu tiro con arco.</p>
   <div class="wa-about-chips"><span>🎯 Entrenamientos</span><span>📊 Estadísticas</span><span>🏆 Competencias piloto</span></div>
-  ${isWelcome?startButton:'<p class="small muted">Esta guía siempre estará disponible desde Entrenar → Acerca de WA Scoring y Ajustes → Ayuda y manual.</p>'}
+  ${isWelcome?'<p class="small muted">Desliza hacia abajo para conocer todas las funciones. El botón para comenzar está al final de esta guía.</p>':'<p class="small muted">Esta guía siempre estará disponible desde Entrenar → Acerca de WA Scoring y Ajustes → Ayuda y manual.</p>'}
  </section>
- <section class="card gap wa-about-section"><h2>📣 Novedades de WA Scoring</h2><p>Consulta los cambios incorporados en la versión más reciente, incluso si ya cerraste el aviso inicial.</p><button type="button" class="btn block" data-action="show-whats-new">📣 Ver novedades de esta versión</button></section>
+ ${isWelcome?'':`<section class="card gap wa-about-section"><h2>📣 Novedades de WA Scoring</h2><p>Consulta los cambios incorporados en la versión más reciente, incluso si ya cerraste el aviso inicial.</p><button type="button" class="btn block" data-action="show-whats-new">📣 Ver novedades de esta versión</button></section>`}
  <section class="card gap wa-about-section"><h2>🎯 1. Entrenamientos</h2>
   <p>Elige tu formato y anota tocando la zona exacta de impacto en la diana. Amplía con dos dedos sobre la zona que quieras observar; también puedes corregir una flecha.</p>
   <ul><li><strong>Indoor 18 m:</strong> 60 flechas en 20 tandas de 3.</li><li><strong>Barebow 50 m:</strong> 72 flechas en 12 tandas de 6.</li><li><strong>Recurvo 70 m:</strong> 72 flechas en 12 tandas de 6.</li></ul>
@@ -332,7 +340,7 @@ function aboutPage(isWelcome=false){
   <p class="small muted">No necesitas una cuenta para anotar entrenamientos locales. La conexión se utiliza para competencias en red y enlaces compartidos.</p>
  </section>
  <section class="card gap wa-about-credits"><div class="eyebrow">CRÉDITOS DEL PROYECTO</div><h2>WA Scoring</h2>
-  <p>Desarrollado por <strong>Michael Opitz</strong></p><p><strong>Club Volcanes · Puerto Varas</strong></p>
+  <p>Desarrollado por <strong>Michael Opitz Jürgens</strong></p><p><strong>Club Volcanes · Puerto Varas</strong></p>
   <p class="small muted">Una herramienta para registrar tus flechas y aprender a interpretar tu evolución como arquero.</p>
   ${startButton}
  </section>`;
@@ -350,7 +358,7 @@ const groupCircle=grouping?.count>=2?`<circle cx="${200+grouping.center.x*180}" 
 const groupCenter=grouping?.count>=1?`<path d="M${200+grouping.center.x*180-6} ${200+grouping.center.y*180}h12 M${200+grouping.center.x*180} ${200+grouping.center.y*180-6}v12" stroke="#075d86" stroke-width="2.5" fill="none"/>`:'';
 return `<svg xmlns="http://www.w3.org/2000/svg" id="${live?'targetSvg':'statsTarget'}" class="target" viewBox="0 0 400 400" aria-label="Diana con impactos"><g id="${live?'targetContent':'statsTargetContent'}"><rect x="0" y="0" width="400" height="400" fill="#afb7b3"/>${circles}<circle cx="200" cy="200" r="9" fill="none" stroke="#967c20" stroke-width=".8"/><path d="M195 200h10 M200 195v10" stroke="#967c20" stroke-width=".8"/>${groupCircle}${marks}${groupCenter}</g></svg>`}
 function scoreBoxes(s){const f=fmt(s);return `<div class="score-grid">${Array.from({length:f.perEnd},(_,i)=>{const hit=(s.status==='finished'&&s.current.length===0?s.ends.at(-1)||[]:s.current)[i];return `<div class="score-box ${scoreClass(hit)}"><span>${hit?scoreText(hit):'—'}</span></div>`}).join('')}</div>`}
-/* v0.6.4.16: pantalla compacta SOLO para entrenamientos. Competencias conservan liveFullSheet. */
+/* v0.6.4.17: pantalla compacta SOLO para entrenamientos. Competencias conservan liveFullSheet. */
 function compactTrainingSheet(s){
  const f=fmt(s),selection=correctionSelection(s,'training',null),active=Math.min(s.ends.length,f.maxEnds-1);
  let cumulative=0;
@@ -418,7 +426,7 @@ function detailImpacts(s){
  return `<section class="card gap"><h2>Mapa de impactos</h2><div class="field"><label for="impactChoice">Mostrar impactos</label><select id="impactChoice" data-action="impact-change"><option value="all" ${view.impactScope==='all'?'selected':''}>Todos (${arr.length} impactos)</option>${Array.from({length:maxEnd},(_,i)=>`<option value="${i+1}" ${view.impactScope==='end'&&view.impactEnd===i+1?'selected':''}>Tanda ${i+1}</option>`).join('')}</select></div><div class="target-wrap">${targetSvg(s,false,show,group)}<div class="footer-note">${show.length} impactos · Verde = flecha · Círculo azul = radio RMS · Cruz azul = centro medio</div></div><div class="metric-list"><div class="metric"><span>Centro medio horizontal</span><strong>${group.count?direction(group.center.x,1,f.faceCm):'—'}</strong></div><div class="metric"><span>Centro medio vertical</span><strong>${group.count?direction(group.center.y,0,f.faceCm):'—'}</strong></div><div class="metric"><span>Radio de dispersión (RMS)</span><strong>${group.count>=2?money(group.radiusCm)+' cm':'—'}</strong></div><div class="metric"><span>Impactos medidos (sin M)</span><strong>${group.count}</strong></div></div>${groupingExplain(group)}${analysisHelp(s,show)}<p class="small muted">Las distancias son estimaciones según dónde se marcaron los impactos en pantalla, no mediciones físicas exactas.</p></section>`;
 }
 function meanXY(arr){return {x:arr.reduce((s,a)=>s+a.x,0)/Math.max(1,arr.length),y:arr.reduce((s,a)=>s+a.y,0)/Math.max(1,arr.length)}}
-// v0.6.4.16: mismo subconjunto para centro, dispersión y círculo. Excluye M y coordenadas ausentes.
+// v0.6.4.17: mismo subconjunto para centro, dispersión y círculo. Excluye M y coordenadas ausentes.
 function groupingData(arr,faceCm){
  const points=arr.filter(a=>a?.score!=='M'&&Number.isFinite(a?.x)&&Number.isFinite(a?.y));
  const count=points.length,center=meanXY(points),scale=faceCm/2;
@@ -1000,6 +1008,12 @@ svg.addEventListener('pointermove',evt=>{if(!pointers.has(evt.pointerId))return;
 function release(evt,canceled){const prev=pointers.get(evt.pointerId);if(!prev)return;const canTap=!canceled&&!hasMoved&&pointers.size===1&&distance(coords(evt),{x:prev.sx,y:prev.sy})<8;pointers.delete(evt.pointerId);if(pointers.size<2)pinchAnchor=null;if(canTap&&!view.busy&&(view.editShot||s.status==='active'&&s.current.length<fmt(s).perEnd)){const pt=svg.createSVGPoint();pt.x=evt.clientX;pt.y=evt.clientY;const matrix=g.getScreenCTM();if(matrix){const loc=pt.matrixTransform(matrix.inverse());const dx=loc.x-200,dy=loc.y-200,r=Math.hypot(dx,dy);const score=r>=180?'M':Math.max(1,Math.min(10,11-Math.ceil(r/18)));const shot={score,x:Number((dx/180).toFixed(6)),y:Number((dy/180).toFixed(6)),xRing:score===10&&r<=9};if(view.editShot){if(view.editShot.scope==='competition')correctCompetitionShot(shot);else correctTrainingShot(shot);}else onShot(shot);}}if(pointers.size===0)hasMoved=false;}
 svg.addEventListener('pointerup',evt=>release(evt,false));svg.addEventListener('pointercancel',evt=>release(evt,true));transform();}
 app.addEventListener('click',async evt=>{const el=evt.target.closest('[data-action]');if(!el||el.disabled)return;const action=el.dataset.action,value=el.dataset.value;const s=get();
+if(action==='welcome-complete'){
+ if(view.page!=='welcome')return;
+ try{localStorage.setItem(welcomeStorageKey,'1')}catch(_){/* Sin almacenamiento: permitir continuar, pero repetir bienvenida al reabrir. */}
+ view.page='home';view.notice='';render();window.scrollTo?.(0,0);return;
+}
+if(view.page==='welcome')return; // Solo el botón situado AL FINAL puede salir de la guía.
 if(action==='show-whats-new'){if(!window.WAReleaseNotes?.show(true))alertMsg('Las novedades estarán disponibles cuando no estés anotando.',true);return;}
 if(action==='copy-stats-prompt'){
  try{await navigator.clipboard.writeText(value);alertMsg('Consulta copiada. Abre ChatGPT y pégala para que te explique tus resultados.');}
@@ -1292,12 +1306,12 @@ app.addEventListener('submit',async evt=>{if(evt.target.id!=='createForm')return
 app.addEventListener('change',evt=>{if(evt.target.id==='testMode'){const selected=evt.target.checked;const badge=document.getElementById('testModeState');if(badge)badge.textContent=selected?'ACTIVADO':'DESACTIVADO';evt.target.closest('.test-mode-option')?.classList.toggle('test-mode-on',selected);return}if(evt.target.id==='targetSelect'){view.editShot=null;const ev=events.find(x=>x.id===view.activeEvent);const target=Number(evt.target.value);const slots=ev?.draw?.filter(x=>x.target===target)||[];if(slots.length){view.activeTarget=target;view.activePosition=slots[0].position;view.disputeVisible=false;view.correctionVisible=false;view.zoom=1;view.panX=0;view.panY=0;render()}return}if(evt.target.id==='spectatorFilter'){view.spectatorFilter=evt.target.value;render();return}if(evt.target.id==='spectatorLiveFilter'){view.spectatorLiveFilter=evt.target.value;view.spectatorMatchId=null;render();return}if(evt.target.id==='categoryFilter'){view.categoryFilter=evt.target.value;render();return}if(evt.target.id==='impactChoice'){view.impactScope=evt.target.value==='all'?'all':'end';if(view.impactScope==='end')view.impactEnd=Number(evt.target.value);render();return}if(evt.target.id==='importFile'){importFile(evt.target.files?.[0]);evt.target.value='';return}if(evt.target.id==='importEvent'){importEventFile(evt.target.files?.[0]);evt.target.value='';return}if(evt.target.id==='importPersonal'){importPersonalFile(evt.target.files?.[0]);evt.target.value='';return}if(evt.target.id==='leftPriority'){changeEvent(ev=>{if(ev.locked)throw Error('Sorteo bloqueado');ev.preferLeft=evt.target.checked;ev.draw=[]});return}});
 app.addEventListener('input',evt=>{if(evt.target.id==='historySearch'){const val=evt.target.value.toLocaleLowerCase('es');document.querySelectorAll('#historyList>.session').forEach(el=>{el.style.display=el.textContent.toLocaleLowerCase('es').includes(val)?'':'none'})}});
 
-// v0.6.4.16: la actualización es voluntaria, solo en una pantalla segura.
+// v0.6.4.17: la actualización es voluntaria, solo en una pantalla segura.
 // No cerrar un registro abierto, ni recargar si hay una escritura en curso.
 window.WAUpdateMayApply = () => {
  if (view.busy || document.body.classList.contains('wa-release-open')) return false;
  const safePages = ['home','history','detail','training-receive','competitions','personal-history',
-   'personal-detail','spectator','spectator-event','spectator-detail','settings','welcome','about'];
+   'personal-detail','spectator','spectator-event','spectator-detail','settings','about'];
  if (!safePages.includes(view.page)) return false;
  // Un tanteador/organizador conectado a una sala en marcha no debe recargarse.
  if (cloudState.connected && cloudState.room?.status === 'running'
@@ -1305,6 +1319,6 @@ window.WAUpdateMayApply = () => {
  return true;
 };
 
-async function boot(){try{db=await makeDB();await refresh();await migrateUnclosedEnds();window.WAReleaseNotes?.init({hasExistingData:Boolean(sessions.length||events.length||personal.length)});const params=new URLSearchParams(location.search);if(params.has('waTraining')){view.page='training-receive';view.incomingTrainingCode=params.get('waTraining')||'';}else if(params.has('waSpectate'))view.page='spectator-event';else if(params.has('waRoom'))view.page='cloud-join';else if(shouldShowWelcome())view.page='welcome';render();window.WAUpdates?.start().catch(()=>{});if(params.has('waTraining')){fetchIncomingTraining(params.get('waTraining')).catch(err=>alertMsg(err.message,true));}else if(params.has('waSpectate')){openSpectatorRoom(params.get('waSpectate')).catch(err=>alertMsg(err.message,true));}else if(params.has('waRoom')){initCloud().then(()=>render()).catch(err=>{cloudState.error=err.message;alertMsg('Firebase no disponible: '+err.message,true)})}else{import('./cloud.js?v=0.6.4.16').then(mod=>{cloudState.api=mod;cloudState.configured=mod.isConfigured;render()}).catch(()=>{})}}catch(err){app.innerHTML=`<div class="card gap" style="margin-top:25px"><h2>No se pudo iniciar el almacenamiento</h2><p class="small">${e(err.message)}</p><p class="small muted">Abre WA Scoring desde un navegador que permita IndexedDB. No registres flechas hasta resolverlo.</p></div>`}}
+async function boot(){try{db=await makeDB();await refresh();await migrateUnclosedEnds();window.WAReleaseNotes?.init({hasExistingData:Boolean(sessions.length||events.length||personal.length)});const params=new URLSearchParams(location.search);if(params.has('waTraining')){view.page='training-receive';view.incomingTrainingCode=params.get('waTraining')||'';}else if(params.has('waSpectate'))view.page='spectator-event';else if(params.has('waRoom'))view.page='cloud-join';else if(shouldShowWelcome())view.page='welcome';render();window.WAUpdates?.start().catch(()=>{});if(params.has('waTraining')){fetchIncomingTraining(params.get('waTraining')).catch(err=>alertMsg(err.message,true));}else if(params.has('waSpectate')){openSpectatorRoom(params.get('waSpectate')).catch(err=>alertMsg(err.message,true));}else if(params.has('waRoom')){initCloud().then(()=>render()).catch(err=>{cloudState.error=err.message;alertMsg('Firebase no disponible: '+err.message,true)})}else{import('./cloud.js?v=0.6.4.17').then(mod=>{cloudState.api=mod;cloudState.configured=mod.isConfigured;if(view.page!=='welcome')render()}).catch(()=>{})}}catch(err){app.innerHTML=`<div class="card gap" style="margin-top:25px"><h2>No se pudo iniciar el almacenamiento</h2><p class="small">${e(err.message)}</p><p class="small muted">Abre WA Scoring desde un navegador que permita IndexedDB. No registres flechas hasta resolverlo.</p></div>`}}
 boot();
 })();

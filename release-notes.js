@@ -1,13 +1,11 @@
-/* WA Scoring 0.6.4.16 — registro de novedades. No usa Firebase ni IndexedDB. */
+/* WA Scoring 0.6.4.17 — registro de novedades. No usa Firebase ni IndexedDB. */
 (() => {
  'use strict';
  // Actualizar estos datos en CADA próxima versión que tenga novedades visibles.
  const RELEASE = Object.freeze({
-  version:'0.6.4.16',
+  version:'0.6.4.17',
   changes:[
-   'Ahora, después de instalar una actualización, puedes leer un resumen de sus novedades.',
-   'El aviso espera hasta que regreses a la pantalla principal: no aparece mientras anotas.',
-   'Puedes consultar las novedades nuevamente desde Acerca de WA Scoring o Ajustes.'
+   'La bienvenida de primera instalación ahora se recorre hasta el final: hay un único botón para comenzar, ubicado al terminar la guía.'
   ]
  });
  const KEY='wa-scoring-changelog-ack-v1';
