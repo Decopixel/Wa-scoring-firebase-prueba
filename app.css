@@ -331,3 +331,58 @@ body.wa-release-open{overflow:hidden}
 body[data-wa-page="welcome"] #app{padding-bottom:calc(18px + env(safe-area-inset-bottom))}
 .wa-project-credit{margin-top:6px;line-height:1.45;overflow-wrap:break-word}
 .wa-project-credit strong{font-weight:750}
+
+/* v0.6.4.19 · Piloto iPhone: barra al pie mediante sticky, sin fixed.
+   En iOS el bottom:0 de position:fixed puede quedar anclado a un viewport
+   desactualizado tras cambios del teclado, zoom o al reabrir la PWA.
+   El contenedor flex mantiene el pie abajo en páginas cortas y sticky
+   lo conserva visible mientras se desplaza el contenido largo.
+   No altera el viewport ni los gestos de la diana. */
+@media screen {
+  #app {
+    display:flex;
+    flex-direction:column;
+    min-height:100vh;
+    min-height:100dvh;
+    padding-bottom:0;
+  }
+  #app > .screen {flex:1 0 auto;min-width:0;}
+  #app > .nav {
+    position:-webkit-sticky;
+    position:sticky;
+    bottom:0;
+    left:auto;right:auto;
+    flex:0 0 auto;
+    width:calc(100% + 24px);
+    max-width:none;
+    margin:0 -12px;
+    transform:none;
+    -webkit-transform:none;
+  }
+  body[data-wa-page="welcome"] #app {
+    padding-bottom:calc(18px + env(safe-area-inset-bottom));
+  }
+}
+
+
+/* v0.6.4.20 · Diana de puntuación más grande, conservando SVG 400×400 y geometría de impactos.
+   Solo pantallas de REGISTRO (Entrenamiento y Competencia); Estadísticas e historial no cambian.
+   Los márgenes negativos aprovechan el padding de la tarjeta, sin invadir el ancho de #app. */
+.training-target{min-width:0;}
+.training-target .target-wrap{
+  width:calc(100% + 24px);max-width:none;margin-inline:-12px;
+  padding:0;background:transparent;border-radius:10px;
+}
+.training-target .target{border-radius:9px;}
+.training-target .target-controls{padding-inline:8px;}
+.training-target .footer-note{padding-inline:8px;}
+.competition-score-target{min-width:0;}
+.competition-score-target .target-wrap{
+  width:calc(100% + 32px);max-width:none;margin-inline:-16px;
+  padding:0;background:transparent;border-radius:10px;
+}
+.competition-score-target .target{border-radius:9px;}
+.competition-score-target .target-controls{padding-inline:8px;}
+@media(max-width:380px){
+  .training-target .target-wrap{width:calc(100% + 20px);margin-inline:-10px;}
+}

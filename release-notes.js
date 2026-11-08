@@ -1,11 +1,12 @@
-/* WA Scoring 0.6.4.18 — registro de novedades. No usa Firebase ni IndexedDB. */
+/* WA Scoring 0.6.4.20 — registro de novedades. No usa Firebase ni IndexedDB. */
 (() => {
  'use strict';
  // Actualizar estos datos en CADA próxima versión que tenga novedades visibles.
  const RELEASE = Object.freeze({
-  version:'0.6.4.18',
+  version:'0.6.4.20',
   changes:[
-   'Mejoras internas de funcionamiento y estabilidad.'
+   'Diana más grande para anotar flechas en Entrenamiento y Competencias.',
+   'Ajuste del menú inferior para evitar que se desplace sobre la planilla en iPhone.'
   ]
  });
  const KEY='wa-scoring-changelog-ack-v1';
