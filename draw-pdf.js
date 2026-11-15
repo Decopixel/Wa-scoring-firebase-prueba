@@ -41,7 +41,8 @@
   write(722,50,8,'Página '+page+' / '+totalPages);
   return out.join('\n')+'\n';
  }
- function toPdf(pages){
+ function toPdf(pages,options={}){
+  const width=options.width||PT,height=options.height||PH,images=options.images||[];
   const objects={};const fontId=3+pages.length*2;
   objects[1]='<< /Type /Catalog /Pages 2 0 R >>';
   objects[2]='<< /Type /Pages /Count '+pages.length+' /Kids ['+pages.map((_,i)=>(3+i*2)+' 0 R').join(' ')+'] >>';
@@ -49,16 +50,21 @@
   objects[fontId+1]='<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>';
   pages.forEach((content,i)=>{
    const pageId=3+i*2,streamId=4+i*2;
-   objects[pageId]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+PT+' '+PH+'] /Resources << /Font << /F1 '+fontId+' 0 R /F2 '+(fontId+1)+' 0 R >> >> /Contents '+streamId+' 0 R >>';
+   objects[pageId]='<< /Type /Page /Parent 2 0 R /MediaBox [0 0 '+width+' '+height+'] /Resources << /Font << /F1 '+fontId+' 0 R /F2 '+(fontId+1)+' 0 R >>'+(images.length?' /XObject << '+images.map((_,j)=>'/Im'+j+' '+(fontId+2+j)+' 0 R').join(' ')+' >>':'')+' >> /Contents '+streamId+' 0 R >>';
    objects[streamId]='<< /Length '+content.length+' >>\nstream\n'+content+'endstream';
   });
+  images.forEach((img,j)=>{
+   const stream=img.hex+'>\n';
+   objects[fontId+2+j]='<< /Type /XObject /Subtype /Image /Width '+img.width+' /Height '+img.height+' /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length '+stream.length+' >>\nstream\n'+stream+'endstream';
+  });
+  const size=fontId+2+images.length;
   const ids=Object.keys(objects).map(Number).sort((a,b)=>a-b);
   let result='%PDF-1.4\n%WA Scoring\n';const offsets=[0];
   for(const id of ids){offsets[id]=result.length;result+=id+' 0 obj\n'+objects[id]+'\nendobj\n'}
   const xref=result.length;
-  result+='xref\n0 '+(fontId+2)+'\n0000000000 65535 f \n';
-  for(let i=1;i<=fontId+1;i++)result+=(String(offsets[i]||0).padStart(10,'0')+' 00000 n \n');
-  result+='trailer\n<< /Size '+(fontId+2)+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
+  result+='xref\n0 '+size+'\n0000000000 65535 f \n';
+  for(let i=1;i<size;i++)result+=(String(offsets[i]||0).padStart(10,'0')+' 00000 n \n');
+  result+='trailer\n<< /Size '+size+' /Root 1 0 R >>\nstartxref\n'+xref+'\n%%EOF\n';
   const bytes=new Uint8Array(result.length);for(let i=0;i<result.length;i++)bytes[i]=result.charCodeAt(i)&255;
   return new Blob([bytes],{type:'application/pdf'});
  }
@@ -71,5 +77,50 @@
   const filename='WA_SCORING_Posiciones_'+safeFile(ev.name)+(club?'_'+safeFile(club):'_Todos')+'.pdf';
   return {blob:toPdf(pages),filename,count:rows.length,pages:totalPages};
  }
- global.WADrawPDF=Object.freeze({generate,normalizeClub,rowsFor});
+ // Convert each stored PNG signature to an opaque RGB JPEG. Never print before it has loaded.
+ async function signatureImage(data){
+  if(typeof data!=='string'||!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(data)||data.length>250000)throw Error('Firma de la planilla inválida.');
+  const image=await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>resolve(img);img.onerror=()=>reject(Error('No se pudo leer una de las firmas.'));img.src=data;});
+  if(!image.naturalWidth||!image.naturalHeight)throw Error('Firma sin dimensiones.');
+  const canvas=document.createElement('canvas'),scale=Math.min(1,800/image.naturalWidth,250/image.naturalHeight);
+  canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));
+  const ctx=canvas.getContext('2d');if(!ctx)throw Error('No se pudo preparar la imagen de firma.');
+  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  const jpeg=canvas.toDataURL('image/jpeg',.92);if(!jpeg.startsWith('data:image/jpeg;base64,'))throw Error('No se pudo convertir la firma.');
+  const raw=atob(jpeg.split(',')[1]);let hex='';for(let i=0;i<raw.length;i++)hex+=raw.charCodeAt(i).toString(16).padStart(2,'0');
+  return {width:canvas.width,height:canvas.height,hex};
+ }
+ function signedPage(ev,slot,r,f,images){
+  const a=participant(ev,slot.number),v=r.validation;const out=[];
+  const write=(x,y,size,str,bold=false,color='.13 .18 .22')=>out.push('BT /'+(bold?'F2':'F1')+' '+size+' Tf '+color+' rg 1 0 0 1 '+x+' '+y+' Tm ('+enc(str)+') Tj ET');
+  const rect=(x,y,w,h,color)=>out.push(color+' rg '+x+' '+y+' '+w+' '+h+' re f');
+  const line=(x1,y1,x2,y2)=>out.push('.78 .82 .80 RG .5 w '+x1+' '+y1+' m '+x2+' '+y2+' l S');
+  const score=shot=>shot.score==='M'?0:shot.score;
+  const total=r.ends.flat().reduce((n,shot)=>n+score(shot),0);
+  rect(0,830,595,12,'.12 .42 .24');
+  write(36,800,10,'WA SCORING  /  COMPETENCIAS',true,'.12 .42 .24');
+  write(36,771,20,'PLANILLA FIRMADA Y VALIDADA',true);
+  write(36,747,12,fit(ev.name,520,12),true);
+  write(36,727,10,'Fecha: '+pdfDate(ev.date)+'  |  '+fit(f.name,340,10));
+  write(36,708,11,fit(a.name,370,11),true);write(405,708,10,'N° '+slot.number+'  |  Paca '+slot.target+slot.position,true);
+  write(36,690,9,fit([normalizeClub(a.club),a.division,a.age,a.level,a.gender].filter(Boolean).join(' / '),520,9));
+  write(36,668,13,total+' / '+(f.perEnd*f.maxEnds*10)+' puntos  ·  '+(f.perEnd*f.maxEnds)+' flechas',true,'.12 .42 .24');
+  const start=36,end=559, widths=[55,...Array(f.perEnd).fill((523-55-130)/f.perEnd),65,65]; const xs=[start];widths.forEach(w=>xs.push(xs.at(-1)+w));
+  rect(start,628,end-start,24,'.12 .36 .23');const heads=['Tanda',...Array.from({length:f.perEnd},(_,i)=>'F'+(i+1)),'Subtotal','Total'];heads.forEach((h,i)=>write(xs[i]+7,636,9,h,true,'1 1 1'));
+  let running=0;r.ends.forEach((shots,i)=>{const y=610-i*18;const sorted=[...shots].sort((a,b)=>score(b)-score(a)||Number(b.xRing)-Number(a.xRing));const subtotal=shots.reduce((n,x)=>n+score(x),0);running+=subtotal;if(i%2===0)rect(start,y-6,end-start,18,'.94 .97 .94');[i+1,...sorted.map(x=>x.score==='M'?'M':x.xRing?'X':x.score),subtotal,running].forEach((val,j)=>write(xs[j]+8,y,10,val,j===0||j>=heads.length-2));});
+  line(start,252,end,252);
+  write(36,230,9,'Validada: '+new Date(v.validatedAt).toLocaleString('es-CL'));
+  write(36,207,10,'Firma del arquero',true);write(305,207,10,fit('Firma del anotador: '+(v.scorerName||'Anotador'),250,10),true);
+  images.forEach((img,i)=>{const x=i?305:36,y=112,w=254,h=80;rect(x,y,w,h,'.96 .97 .96');const sc=Math.min((w-8)/img.width,(h-8)/img.height),iw=img.width*sc,ih=img.height*sc;out.push('q '+iw.toFixed(2)+' 0 0 '+ih.toFixed(2)+' '+(x+(w-iw)/2).toFixed(2)+' '+(y+(h-ih)/2).toFixed(2)+' cm /Im'+i+' Do Q');});
+  write(36,81,9,'Copia de la planilla local validada. Verifique con el organizador si existen revisiones posteriores.');
+  write(36,65,8,'Firmas manuscritas registradas en WA Scoring; no constituyen firmas digitales criptográficas.');
+  return out.join('\n')+'\n';
+ }
+ async function signedScorecard(ev,slot,r,f){
+  if(!participant(ev,slot.number)||!r||r.status!=='finished'||r.validation?.status!=='validated'||r.validation.decision!=='agree'||!r.validation.validatedAt||!Number.isFinite(new Date(r.validation.validatedAt).getTime())||!Array.isArray(r.ends)||!Array.isArray(r.current)||r.current.length||![3,6].includes(f.perEnd)||![12,20].includes(f.maxEnds)||r.ends.length!==f.maxEnds||r.ends.some(end=>!Array.isArray(end)||end.length!==f.perEnd||end.some(shot=>!shot||!(shot.score==='M'||Number.isInteger(shot.score)&&shot.score>=1&&shot.score<=10))))throw Error('Planilla incompleta o no validada.');
+  const images=await Promise.all([signatureImage(r.validation.archerSignature),signatureImage(r.validation.scorerSignature)]);
+  const blob=toPdf([signedPage(ev,slot,r,f,images)],{width:595,height:842,images});
+  return {blob,filename:'WA_SCORING_Planilla_'+safeFile(ev.name)+'_'+safeFile(participant(ev,slot.number).name)+'_'+slot.number+'.pdf'};
+ }
+ global.WADrawPDF=Object.freeze({generate,normalizeClub,rowsFor,signedScorecard});
 })(window);

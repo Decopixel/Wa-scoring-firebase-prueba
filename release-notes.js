@@ -1,14 +1,14 @@
-/* WA Scoring 0.6.4.23 — registro de novedades. No usa Firebase ni IndexedDB. */
+/* WA Scoring 0.6.4.24 — registro de novedades. No usa Firebase ni IndexedDB. */
 (() => {
  'use strict';
  // Actualizar estos datos en CADA próxima versión que tenga novedades visibles.
  const RELEASE = Object.freeze({
-  version:'0.6.4.23',
+  version:'0.6.4.24',
   changes:[
-   'Indicador Firebase y botón Refrescar / reconectar, con hora de última sincronización guardada.',
-   'El organizador conserva las planillas completas con impactos y firmas, y puede exportar las estadísticas validadas desde la copia local.',
-   'Respaldo local de emergencia disponible incluso sin conexión; si no está confirmado, se advierte que podría estar incompleto.',
-   'Se conservan el PDF de posiciones por club y la recepción de entrenamientos desde Chrome/Safari mediante el portapapeles.'
+   'Planilla firmada en PDF real para anotadores y organizadores: preparar, compartir o guardar en Archivos.',
+   'Estadísticas individuales de competencia por enlace o código de 7 días; se guardan en Mis competencias.',
+   'Se conserva el respaldo .wascore y la exportación de planillas validadas sin conexión.',
+   'Recepción guiada desde Chrome/Safari mediante el portapapeles, para entrenamientos y competencias.' 
   ]
  });
  const KEY='wa-scoring-changelog-ack-v1';

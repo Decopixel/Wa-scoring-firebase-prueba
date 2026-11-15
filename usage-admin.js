@@ -47,7 +47,7 @@ async function refresh(){
 }
 async function start(){
  try{
-  const cloud=await import('./cloud.js?v=0.6.4.23');await cloud.initialize();uid=cloud.currentUid();
+  const cloud=await import('./cloud.js?v=0.6.4.24');await cloud.initialize();uid=cloud.currentUid();
   if(!uid)throw Error('No hay usuario anónimo de Firebase.');
   db=getFirestore(getApp());
   const grant=await getDoc(doc(db,'waUsageAdmins',uid));
