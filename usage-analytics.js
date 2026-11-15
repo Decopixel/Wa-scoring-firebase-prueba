@@ -38,7 +38,7 @@ async function connect(){
    import('https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js')
   ]);
   ({getApp}=appMod);({getFirestore,doc,getDoc,setDoc,updateDoc,serverTimestamp,Timestamp}=storeMod);
-  cloud=await import('./cloud.js?v=0.6.4.18');
+  cloud=await import('./cloud.js?v=0.6.4.23');
   await cloud.initialize();
   userId=cloud.currentUid()||'';
   if(!userId)throw Error('Firebase Auth no disponible');

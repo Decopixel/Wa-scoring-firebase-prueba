@@ -1,13 +1,14 @@
-/* WA Scoring 0.6.4.22 — registro de novedades. No usa Firebase ni IndexedDB. */
+/* WA Scoring 0.6.4.23 — registro de novedades. No usa Firebase ni IndexedDB. */
 (() => {
  'use strict';
  // Actualizar estos datos en CADA próxima versión que tenga novedades visibles.
  const RELEASE = Object.freeze({
-  version:'0.6.4.22',
+  version:'0.6.4.23',
   changes:[
-   'Nuevo campo Club / institución al inscribir arqueros; permite indicar Independiente.',
-   'Después de confirmar el sorteo, PDF de posiciones completo o por club para compartir con las delegaciones.',
-   'Se mantiene la recepción de entrenamientos por WhatsApp mediante el portapapeles, evitando confundir Chrome/Safari con la app instalada.'
+   'Indicador Firebase y botón Refrescar / reconectar, con hora de última sincronización guardada.',
+   'El organizador conserva las planillas completas con impactos y firmas, y puede exportar las estadísticas validadas desde la copia local.',
+   'Respaldo local de emergencia disponible incluso sin conexión; si no está confirmado, se advierte que podría estar incompleto.',
+   'Se conservan el PDF de posiciones por club y la recepción de entrenamientos desde Chrome/Safari mediante el portapapeles.'
   ]
  });
  const KEY='wa-scoring-changelog-ack-v1';

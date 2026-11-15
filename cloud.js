@@ -4,7 +4,7 @@ import { getAuth, onAuthStateChanged, signInAnonymously } from 'https://www.gsta
 import { getFirestore, serverTimestamp, Timestamp, collection, doc, setDoc, updateDoc, getDoc, getDocFromServer, getDocs, query, where, onSnapshot, runTransaction, writeBatch, deleteDoc, limit } from 'https://www.gstatic.com/firebasejs/13.1.0/firebase-firestore.js';
 const config=window.WA_FIREBASE_CONFIG||{};
 export const isConfigured=Boolean(config.apiKey&&config.projectId&&config.appId&&config.authDomain);
-let app,auth,db;
+let app,auth,db,initializing;
 const root='waRooms';
 const publicRoot='waPublicEvents';
 // Firestore no permite arrays anidados directamente (ends = [[flechas], ...]).
@@ -45,11 +45,16 @@ function assertReady(){if(!db||!auth?.currentUser)throw Error('Firebase no está
 export function currentUid(){return auth?.currentUser?.uid||null}
 export async function initialize(){
  if(!isConfigured)throw Error('Falta configurar firebase-config.js (consulta INSTALACION_FIREBASE.md).');
- if(db)return currentUid();
- app=initializeApp(config);auth=getAuth(app);db=getFirestore(app);
- const existing=await new Promise((resolve,reject)=>{let off=()=>{};off=onAuthStateChanged(auth,u=>{off();resolve(u)},reject)});
- if(!existing)await signInAnonymously(auth);
- return currentUid();
+ if(initializing)return initializing;
+ if(db&&currentUid())return currentUid();
+ if(!app){app=initializeApp(config);auth=getAuth(app);db=getFirestore(app);}
+ initializing=(async()=>{
+  const existing=await new Promise((resolve,reject)=>{let off=()=>{};off=onAuthStateChanged(auth,u=>{off();resolve(u)},reject)});
+  if(!existing)await signInAnonymously(auth);
+  if(!currentUid())throw Error('No se pudo restaurar la autorización Firebase.');
+  return currentUid();
+ })();
+ try{return await initializing;}finally{initializing=null;}
 }
 export async function publish(ev){
  assertReady();if(ev.status!=='setup'||ev.annotationMode!=='cloud'||!ev.locked||!ev.draw?.length)throw Error('Confirma el sorteo y elige Firebase antes de publicar.');
@@ -85,18 +90,18 @@ export function watchAdmission(roomId,accept,reject){
 }
 export function watchRoom(roomId,target,organizer,{onRoom,onCards,onRequests,onMembers,onBrackets,onTasks,onError}){
  assertReady();const stops=[];const ref=doc(db,root,roomId);
- stops.push(onSnapshot(ref,s=>{if(!s.exists())return onError(Error('La sala ya no existe'));onRoom(s.data());},onError));
+ stops.push(onSnapshot(ref,{includeMetadataChanges:true},s=>{if(!s.exists()){if(!s.metadata.fromCache)onError(Error('La sala ya no existe'));return;}onRoom(s.data(),s.metadata.fromCache||s.metadata.hasPendingWrites);},onError));
  const cards=collection(ref,'cards');
- stops.push(onSnapshot(organizer?cards:query(cards,where('target','==',target)),snap=>{
-  const rows=[];snap.forEach(x=>rows.push([x.id,fromFirestoreCard(x.data())]));onCards(rows,snap.metadata.fromCache);
+ stops.push(onSnapshot(organizer?cards:query(cards,where('target','==',target)),{includeMetadataChanges:true},snap=>{
+  const rows=[];snap.forEach(x=>rows.push([x.id,fromFirestoreCard(x.data())]));onCards(rows,snap.metadata.fromCache||snap.metadata.hasPendingWrites);
  },onError));
- if(organizer)stops.push(onSnapshot(collection(ref,'eliminations'),snap=>{const groups={};snap.forEach(x=>groups[x.id]=x.data());onBrackets(groups);},onError));
+ if(organizer)stops.push(onSnapshot(collection(ref,'eliminations'),{includeMetadataChanges:true},snap=>{const groups={};snap.forEach(x=>groups[x.id]=x.data());onBrackets(groups,snap.metadata.fromCache||snap.metadata.hasPendingWrites);},onError));
  const jobs=collection(ref,'elimTasks');
- stops.push(onSnapshot(organizer?jobs:query(jobs,where('assigneeUid','==',currentUid())),snap=>{
-  onTasks(snap.docs.map(d=>({id:d.id,...d.data()})),snap.metadata.fromCache);
+ stops.push(onSnapshot(organizer?jobs:query(jobs,where('assigneeUid','==',currentUid())),{includeMetadataChanges:true},snap=>{
+  onTasks(snap.docs.map(d=>({id:d.id,...d.data()})),snap.metadata.fromCache||snap.metadata.hasPendingWrites);
  },onError));
- if(organizer)stops.push(onSnapshot(collection(ref,'members'),snap=>{
-   const members=[];snap.forEach(x=>members.push({uid:x.id,...x.data()}));onMembers(members);
+ if(organizer)stops.push(onSnapshot(collection(ref,'members'),{includeMetadataChanges:true},snap=>{
+   const members=[];snap.forEach(x=>members.push({uid:x.id,...x.data()}));onMembers(members,snap.metadata.fromCache||snap.metadata.hasPendingWrites);
   },onError));
  if(organizer)stops.push(onSnapshot(collection(ref,'requests'),snap=>{
   const requests=[];snap.forEach(x=>requests.push({uid:x.id,...x.data()}));onRequests(requests);
